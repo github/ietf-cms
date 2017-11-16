@@ -59,22 +59,6 @@ func TestVerifyAppStore(t *testing.T) {
 	}
 }
 
-func TestDecrypt(t *testing.T) {
-	fixture := UnmarshalTestFixture(EncryptedTestFixture)
-	p7, err := Parse(fixture.Input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	content, err := p7.Decrypt(fixture.Certificate, fixture.PrivateKey)
-	if err != nil {
-		t.Errorf("Cannot Decrypt with error: %v", err)
-	}
-	expected := []byte("This is a test")
-	if bytes.Compare(content, expected) != 0 {
-		t.Errorf("Decrypted result does not match.\n\tExpected:%s\n\tActual:%s", expected, content)
-	}
-}
-
 func TestDegenerateCertificate(t *testing.T) {
 	cert, err := createTestCertificate()
 	if err != nil {
@@ -247,38 +231,6 @@ func TestOpenSSLVerifyDetachedSignature(t *testing.T) {
 	}
 }
 
-func TestEncrypt(t *testing.T) {
-	modes := []int{
-		EncryptionAlgorithmDESCBC,
-		EncryptionAlgorithmAES128GCM,
-	}
-
-	for _, mode := range modes {
-		ContentEncryptionAlgorithm = mode
-
-		plaintext := []byte("Hello Secret World!")
-		cert, err := createTestCertificate()
-		if err != nil {
-			t.Fatal(err)
-		}
-		encrypted, err := Encrypt(plaintext, []*x509.Certificate{cert.Certificate})
-		if err != nil {
-			t.Fatal(err)
-		}
-		p7, err := Parse(encrypted)
-		if err != nil {
-			t.Fatalf("cannot Parse encrypted result: %s", err)
-		}
-		result, err := p7.Decrypt(cert.Certificate, cert.PrivateKey)
-		if err != nil {
-			t.Fatalf("cannot Decrypt encrypted result: %s", err)
-		}
-		if bytes.Compare(plaintext, result) != 0 {
-			t.Errorf("encrypted data does not match plaintext:\n\tExpected: %s\n\tActual: %s", plaintext, result)
-		}
-	}
-}
-
 func TestUnmarshalSignedAttribute(t *testing.T) {
 	cert, err := createTestCertificate()
 	if err != nil {
@@ -308,27 +260,6 @@ func TestUnmarshalSignedAttribute(t *testing.T) {
 	}
 	if testValue != actual {
 		t.Errorf("Attribute does not match test value\n\tExpected: %s\n\tActual: %s", testValue, actual)
-	}
-}
-
-func TestPad(t *testing.T) {
-	tests := []struct {
-		Original  []byte
-		Expected  []byte
-		BlockSize int
-	}{
-		{[]byte{0x1, 0x2, 0x3, 0x10}, []byte{0x1, 0x2, 0x3, 0x10, 0x4, 0x4, 0x4, 0x4}, 8},
-		{[]byte{0x1, 0x2, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0}, []byte{0x1, 0x2, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8}, 8},
-	}
-	for _, test := range tests {
-		padded, err := pad(test.Original, test.BlockSize)
-		if err != nil {
-			t.Errorf("pad encountered error: %s", err)
-			continue
-		}
-		if bytes.Compare(test.Expected, padded) != 0 {
-			t.Errorf("pad results mismatch:\n\tExpected: %X\n\tActual: %X", test.Expected, padded)
-		}
 	}
 }
 

@@ -4,9 +4,6 @@ package pkcs7
 import (
 	"bytes"
 	"crypto"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/des"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -46,10 +43,6 @@ type unsignedData []byte
 var (
 	oidData                   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 1}
 	oidSignedData             = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 2}
-	oidEnvelopedData          = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 3}
-	oidSignedAndEnvelopedData = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 4}
-	oidDigestedData           = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 5}
-	oidEncryptedData          = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 6}
 	oidAttributeContentType   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 3}
 	oidAttributeMessageDigest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 4}
 	oidAttributeSigningTime   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 5}
@@ -66,25 +59,6 @@ type signedData struct {
 
 type rawCertificates struct {
 	Raw asn1.RawContent
-}
-
-type envelopedData struct {
-	Version              int
-	RecipientInfos       []recipientInfo `asn1:"set"`
-	EncryptedContentInfo encryptedContentInfo
-}
-
-type recipientInfo struct {
-	Version                int
-	IssuerAndSerialNumber  issuerAndSerial
-	KeyEncryptionAlgorithm pkix.AlgorithmIdentifier
-	EncryptedKey           []byte
-}
-
-type encryptedContentInfo struct {
-	ContentType                asn1.ObjectIdentifier
-	ContentEncryptionAlgorithm pkix.AlgorithmIdentifier
-	EncryptedContent           asn1.RawValue `asn1:"tag:0,optional,explicit"`
 }
 
 type attribute struct {
@@ -123,28 +97,27 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 	if len(data) == 0 {
 		return nil, errors.New("pkcs7: input data is empty")
 	}
+
 	var info contentInfo
 	der, err := ber2der(data)
 	if err != nil {
 		return nil, err
 	}
+
 	rest, err := asn1.Unmarshal(der, &info)
+	if err != nil {
+		return
+	}
 	if len(rest) > 0 {
 		err = asn1.SyntaxError{Msg: "trailing data"}
 		return
 	}
-	if err != nil {
-		return
-	}
 
-	// fmt.Printf("--> Content Type: %s", info.ContentType)
-	switch {
-	case info.ContentType.Equal(oidSignedData):
+	if info.ContentType.Equal(oidSignedData) {
 		return parseSignedData(info.Content.Bytes)
-	case info.ContentType.Equal(oidEnvelopedData):
-		return parseEnvelopedData(info.Content.Bytes)
+	} else {
+		return nil, ErrUnsupportedContentType
 	}
-	return nil, ErrUnsupportedContentType
 }
 
 func parseSignedData(data []byte) (*PKCS7, error) {
@@ -193,16 +166,6 @@ func (raw rawCertificates) Parse() ([]*x509.Certificate, error) {
 	}
 
 	return x509.ParseCertificates(val.Bytes)
-}
-
-func parseEnvelopedData(data []byte) (*PKCS7, error) {
-	var ed envelopedData
-	if _, err := asn1.Unmarshal(data, &ed); err != nil {
-		return nil, err
-	}
-	return &PKCS7{
-		raw: ed,
-	}, nil
 }
 
 // Verify checks the signatures of a PKCS7 object
@@ -307,174 +270,8 @@ func (p7 *PKCS7) GetOnlySigner() *x509.Certificate {
 // ErrUnsupportedAlgorithm tells you when our quick dev assumptions have failed
 var ErrUnsupportedAlgorithm = errors.New("pkcs7: cannot decrypt data: only RSA, DES, DES-EDE3, AES-256-CBC and AES-128-GCM supported")
 
-// ErrNotEncryptedContent is returned when attempting to Decrypt data that is not encrypted data
-var ErrNotEncryptedContent = errors.New("pkcs7: content data is a decryptable data type")
-
-// Decrypt decrypts encrypted content info for recipient cert and private key
-func (p7 *PKCS7) Decrypt(cert *x509.Certificate, pk crypto.PrivateKey) ([]byte, error) {
-	data, ok := p7.raw.(envelopedData)
-	if !ok {
-		return nil, ErrNotEncryptedContent
-	}
-	recipient := selectRecipientForCertificate(data.RecipientInfos, cert)
-	if recipient.EncryptedKey == nil {
-		return nil, errors.New("pkcs7: no enveloped recipient for provided certificate")
-	}
-	if priv := pk.(*rsa.PrivateKey); priv != nil {
-		var contentKey []byte
-		contentKey, err := rsa.DecryptPKCS1v15(rand.Reader, priv, recipient.EncryptedKey)
-		if err != nil {
-			return nil, err
-		}
-		return data.EncryptedContentInfo.decrypt(contentKey)
-	}
-	fmt.Printf("Unsupported Private Key: %v\n", pk)
-	return nil, ErrUnsupportedAlgorithm
-}
-
-var oidEncryptionAlgorithmDESCBC = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 7}
-var oidEncryptionAlgorithmDESEDE3CBC = asn1.ObjectIdentifier{1, 2, 840, 113549, 3, 7}
-var oidEncryptionAlgorithmAES256CBC = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 42}
-var oidEncryptionAlgorithmAES128GCM = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 6}
-var oidEncryptionAlgorithmAES128CBC = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 2}
-
-func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
-	alg := eci.ContentEncryptionAlgorithm.Algorithm
-	if !alg.Equal(oidEncryptionAlgorithmDESCBC) &&
-		!alg.Equal(oidEncryptionAlgorithmDESEDE3CBC) &&
-		!alg.Equal(oidEncryptionAlgorithmAES256CBC) &&
-		!alg.Equal(oidEncryptionAlgorithmAES128CBC) &&
-		!alg.Equal(oidEncryptionAlgorithmAES128GCM) {
-		fmt.Printf("Unsupported Content Encryption Algorithm: %s\n", alg)
-		return nil, ErrUnsupportedAlgorithm
-	}
-
-	// EncryptedContent can either be constructed of multple OCTET STRINGs
-	// or _be_ a tagged OCTET STRING
-	var cyphertext []byte
-	if eci.EncryptedContent.IsCompound {
-		// Complex case to concat all of the children OCTET STRINGs
-		var buf bytes.Buffer
-		cypherbytes := eci.EncryptedContent.Bytes
-		for {
-			var part []byte
-			cypherbytes, _ = asn1.Unmarshal(cypherbytes, &part)
-			buf.Write(part)
-			if cypherbytes == nil {
-				break
-			}
-		}
-		cyphertext = buf.Bytes()
-	} else {
-		// Simple case, the bytes _are_ the cyphertext
-		cyphertext = eci.EncryptedContent.Bytes
-	}
-
-	var block cipher.Block
-	var err error
-
-	switch {
-	case alg.Equal(oidEncryptionAlgorithmDESCBC):
-		block, err = des.NewCipher(key)
-	case alg.Equal(oidEncryptionAlgorithmDESEDE3CBC):
-		block, err = des.NewTripleDESCipher(key)
-	case alg.Equal(oidEncryptionAlgorithmAES256CBC):
-		fallthrough
-	case alg.Equal(oidEncryptionAlgorithmAES128GCM), alg.Equal(oidEncryptionAlgorithmAES128CBC):
-		block, err = aes.NewCipher(key)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	if alg.Equal(oidEncryptionAlgorithmAES128GCM) {
-		params := aesGCMParameters{}
-		paramBytes := eci.ContentEncryptionAlgorithm.Parameters.Bytes
-
-		_, err := asn1.Unmarshal(paramBytes, &params)
-		if err != nil {
-			return nil, err
-		}
-
-		gcm, err := cipher.NewGCM(block)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(params.Nonce) != gcm.NonceSize() {
-			return nil, errors.New("pkcs7: encryption algorithm parameters are incorrect")
-		}
-		if params.ICVLen != gcm.Overhead() {
-			return nil, errors.New("pkcs7: encryption algorithm parameters are incorrect")
-		}
-
-		plaintext, err := gcm.Open(nil, params.Nonce, cyphertext, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		return plaintext, nil
-	}
-
-	iv := eci.ContentEncryptionAlgorithm.Parameters.Bytes
-	if len(iv) != block.BlockSize() {
-		return nil, errors.New("pkcs7: encryption algorithm parameters are malformed")
-	}
-	mode := cipher.NewCBCDecrypter(block, iv)
-	plaintext := make([]byte, len(cyphertext))
-	mode.CryptBlocks(plaintext, cyphertext)
-	if plaintext, err = unpad(plaintext, mode.BlockSize()); err != nil {
-		return nil, err
-	}
-	return plaintext, nil
-}
-
-func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certificate) recipientInfo {
-	for _, recp := range recipients {
-		if isCertMatchForIssuerAndSerial(cert, recp.IssuerAndSerialNumber) {
-			return recp
-		}
-	}
-	return recipientInfo{}
-}
-
 func isCertMatchForIssuerAndSerial(cert *x509.Certificate, ias issuerAndSerial) bool {
 	return cert.SerialNumber.Cmp(ias.SerialNumber) == 0 && bytes.Compare(cert.RawIssuer, ias.IssuerName.FullBytes) == 0
-}
-
-func pad(data []byte, blocklen int) ([]byte, error) {
-	if blocklen < 1 {
-		return nil, fmt.Errorf("invalid blocklen %d", blocklen)
-	}
-	padlen := blocklen - (len(data) % blocklen)
-	if padlen == 0 {
-		padlen = blocklen
-	}
-	pad := bytes.Repeat([]byte{byte(padlen)}, padlen)
-	return append(data, pad...), nil
-}
-
-func unpad(data []byte, blocklen int) ([]byte, error) {
-	if blocklen < 1 {
-		return nil, fmt.Errorf("invalid blocklen %d", blocklen)
-	}
-	if len(data)%blocklen != 0 || len(data) == 0 {
-		return nil, fmt.Errorf("invalid data len %d", len(data))
-	}
-
-	// the last byte is the length of padding
-	padlen := int(data[len(data)-1])
-
-	// check padding integrity, all bytes should be the same
-	pad := data[len(data)-padlen:]
-	for _, padbyte := range pad {
-		if padbyte != byte(padlen) {
-			return nil, errors.New("invalid padding")
-		}
-	}
-
-	return data[:len(data)-padlen], nil
 }
 
 func unmarshalAttribute(attrs []attribute, attributeType asn1.ObjectIdentifier, out interface{}) error {
@@ -740,201 +537,4 @@ func DegenerateCertificate(cert []byte) ([]byte, error) {
 		Content:     asn1.RawValue{Class: 2, Tag: 0, Bytes: content, IsCompound: true},
 	}
 	return asn1.Marshal(signedContent)
-}
-
-const (
-	EncryptionAlgorithmDESCBC = iota
-	EncryptionAlgorithmAES128GCM
-)
-
-// ContentEncryptionAlgorithm determines the algorithm used to encrypt the
-// plaintext message. Change the value of this variable to change which
-// algorithm is used in the Encrypt() function.
-var ContentEncryptionAlgorithm = EncryptionAlgorithmDESCBC
-
-// ErrUnsupportedEncryptionAlgorithm is returned when attempting to encrypt
-// content with an unsupported algorithm.
-var ErrUnsupportedEncryptionAlgorithm = errors.New("pkcs7: cannot encrypt content: only DES-CBC and AES-128-GCM supported")
-
-const nonceSize = 12
-
-type aesGCMParameters struct {
-	Nonce  []byte `asn1:"tag:4"`
-	ICVLen int
-}
-
-func encryptAES128GCM(content []byte) ([]byte, *encryptedContentInfo, error) {
-	// Create AES key and nonce
-	key := make([]byte, 16)
-	nonce := make([]byte, nonceSize)
-
-	_, err := rand.Read(key)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	_, err = rand.Read(nonce)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Encrypt content
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	ciphertext := gcm.Seal(nil, nonce, content, nil)
-
-	// Prepare ASN.1 Encrypted Content Info
-	paramSeq := aesGCMParameters{
-		Nonce:  nonce,
-		ICVLen: gcm.Overhead(),
-	}
-
-	paramBytes, err := asn1.Marshal(paramSeq)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	eci := encryptedContentInfo{
-		ContentType: oidData,
-		ContentEncryptionAlgorithm: pkix.AlgorithmIdentifier{
-			Algorithm: oidEncryptionAlgorithmAES128GCM,
-			Parameters: asn1.RawValue{
-				Tag:   asn1.TagSequence,
-				Bytes: paramBytes,
-			},
-		},
-		EncryptedContent: marshalEncryptedContent(ciphertext),
-	}
-
-	return key, &eci, nil
-}
-
-func encryptDESCBC(content []byte) ([]byte, *encryptedContentInfo, error) {
-	// Create DES key & CBC IV
-	key := make([]byte, 8)
-	iv := make([]byte, des.BlockSize)
-	_, err := rand.Read(key)
-	if err != nil {
-		return nil, nil, err
-	}
-	_, err = rand.Read(iv)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Encrypt padded content
-	block, err := des.NewCipher(key)
-	if err != nil {
-		return nil, nil, err
-	}
-	mode := cipher.NewCBCEncrypter(block, iv)
-	plaintext, err := pad(content, mode.BlockSize())
-	cyphertext := make([]byte, len(plaintext))
-	mode.CryptBlocks(cyphertext, plaintext)
-
-	// Prepare ASN.1 Encrypted Content Info
-	eci := encryptedContentInfo{
-		ContentType: oidData,
-		ContentEncryptionAlgorithm: pkix.AlgorithmIdentifier{
-			Algorithm:  oidEncryptionAlgorithmDESCBC,
-			Parameters: asn1.RawValue{Tag: 4, Bytes: iv},
-		},
-		EncryptedContent: marshalEncryptedContent(cyphertext),
-	}
-
-	return key, &eci, nil
-}
-
-// Encrypt creates and returns an envelope data PKCS7 structure with encrypted
-// recipient keys for each recipient public key.
-//
-// The algorithm used to perform encryption is determined by the current value
-// of the global ContentEncryptionAlgorithm package variable. By default, the
-// value is EncryptionAlgorithmDESCBC. To use a different algorithm, change the
-// value before calling Encrypt(). For example:
-//
-//     ContentEncryptionAlgorithm = EncryptionAlgorithmAES128GCM
-//
-// TODO(fullsailor): Add support for encrypting content with other algorithms
-func Encrypt(content []byte, recipients []*x509.Certificate) ([]byte, error) {
-	var eci *encryptedContentInfo
-	var key []byte
-	var err error
-
-	// Apply chosen symmetric encryption method
-	switch ContentEncryptionAlgorithm {
-	case EncryptionAlgorithmDESCBC:
-		key, eci, err = encryptDESCBC(content)
-
-	case EncryptionAlgorithmAES128GCM:
-		key, eci, err = encryptAES128GCM(content)
-
-	default:
-		return nil, ErrUnsupportedEncryptionAlgorithm
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Prepare each recipient's encrypted cipher key
-	recipientInfos := make([]recipientInfo, len(recipients))
-	for i, recipient := range recipients {
-		encrypted, err := encryptKey(key, recipient)
-		if err != nil {
-			return nil, err
-		}
-		ias, err := cert2issuerAndSerial(recipient)
-		if err != nil {
-			return nil, err
-		}
-		info := recipientInfo{
-			Version:               0,
-			IssuerAndSerialNumber: ias,
-			KeyEncryptionAlgorithm: pkix.AlgorithmIdentifier{
-				Algorithm: oidEncryptionAlgorithmRSA,
-			},
-			EncryptedKey: encrypted,
-		}
-		recipientInfos[i] = info
-	}
-
-	// Prepare envelope content
-	envelope := envelopedData{
-		EncryptedContentInfo: *eci,
-		Version:              0,
-		RecipientInfos:       recipientInfos,
-	}
-	innerContent, err := asn1.Marshal(envelope)
-	if err != nil {
-		return nil, err
-	}
-
-	// Prepare outer payload structure
-	wrapper := contentInfo{
-		ContentType: oidEnvelopedData,
-		Content:     asn1.RawValue{Class: 2, Tag: 0, IsCompound: true, Bytes: innerContent},
-	}
-
-	return asn1.Marshal(wrapper)
-}
-
-func marshalEncryptedContent(content []byte) asn1.RawValue {
-	asn1Content, _ := asn1.Marshal(content)
-	return asn1.RawValue{Tag: 0, Class: 2, Bytes: asn1Content, IsCompound: true}
-}
-
-func encryptKey(key []byte, recipient *x509.Certificate) ([]byte, error) {
-	if pub := recipient.PublicKey.(*rsa.PublicKey); pub != nil {
-		return rsa.EncryptPKCS1v15(rand.Reader, pub, key)
-	}
-	return nil, ErrUnsupportedAlgorithm
 }
