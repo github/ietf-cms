@@ -13,17 +13,17 @@ import (
 )
 
 var (
-	// ErrUnsupportedContentType is returned when a PKCS7 content is not supported.
+	// ErrUnsupportedContentType is returned when a CMS content is not supported.
 	// Currently only Data (1.2.840.113549.1.7.1) and
 	// Signed Data (1.2.840.113549.1.7.2) are supported.
-	ErrUnsupportedContentType = errors.New("pkcs7: cannot parse data: unimplemented content type")
+	ErrUnsupportedContentType = errors.New("cms/protocol: cannot parse data: unimplemented content type")
 
 	// ErrWrongType is returned by methods that make assumptions about types.
 	// Helper methods are defined for accessing CHOICE and  ANY feilds. These
 	// helper methods get the value of the field, assuming it is of a given type.
 	// This error is returned if that assumption is wrong and the field has a
 	// different type.
-	ErrWrongType = errors.New("pkcs7: wrong choice or any type")
+	ErrWrongType = errors.New("cms/protocol: wrong choice or any type")
 )
 
 var (
