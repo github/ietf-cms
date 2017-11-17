@@ -1,4 +1,4 @@
-package pkcs7
+package protocol
 
 import (
 	"bytes"
@@ -30,12 +30,12 @@ func ParseContentInfoHelper(t *testing.T, ber []byte) {
 		t.Fatal(err)
 	}
 
-	sd, err := ci.signedDataContent()
+	sd, err := ci.SignedDataContent()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err = sd.x509Certificates(); err != nil {
+	if _, err = sd.X509Certificates(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -43,25 +43,25 @@ func ParseContentInfoHelper(t *testing.T, ber []byte) {
 		t.Fatalf("expected %s content, got %s", oidData.String(), sd.EncapContentInfo.EContentType.String())
 	}
 
-	if _, err = sd.EncapContentInfo.dataEContent(); err != nil {
+	if _, err = sd.EncapContentInfo.DataEContent(); err != nil {
 		t.Fatal(err)
 	}
 
 	for _, si := range sd.SignerInfos {
 		// Allow either CHOICE for SID.
-		if _, err = si.issuerAndSerialNumberSID(); err != nil {
-			if _, err = si.subjectKeyIdentifierSID(); err != nil {
+		if _, err = si.IssuerAndSerialNumberSID(); err != nil {
+			if _, err = si.SubjectKeyIdentifierSID(); err != nil {
 				t.Fatal(err)
 			}
 		}
 
-		if _, err = si.subjectKeyIdentifierSID(); err != nil {
-			if _, err = si.issuerAndSerialNumberSID(); err != nil {
+		if _, err = si.SubjectKeyIdentifierSID(); err != nil {
+			if _, err = si.IssuerAndSerialNumberSID(); err != nil {
 				t.Fatal(err)
 			}
 		}
 
-		ct, err := si.getContentTypeAttribute()
+		ct, err := si.GetContentTypeAttribute()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,7 +71,7 @@ func ParseContentInfoHelper(t *testing.T, ber []byte) {
 			t.Fatalf("expected %s content, got %s", sd.EncapContentInfo.EContentType.String(), ct.String())
 		}
 
-		md, err := si.getMessageDigestAttribute() // TODO: test digest size equals hash size
+		md, err := si.GetMessageDigestAttribute() // TODO: test digest size equals hash size
 		if err != nil {
 			t.Fatal(err)
 		} else if len(md) == 0 {
@@ -79,7 +79,7 @@ func ParseContentInfoHelper(t *testing.T, ber []byte) {
 		}
 
 		var nilTime time.Time
-		st, err := si.getSigningTimeAttribute()
+		st, err := si.GetSigningTimeAttribute()
 		if err != nil {
 			t.Fatal(err)
 		}

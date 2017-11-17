@@ -1,5 +1,5 @@
-// Package pkcs7 implements parsing and generation of some PKCS#7 structures.
-package pkcs7
+// Package protocol implements low level CMS types, parsing and generation.
+package protocol
 
 import (
 	"crypto/x509"
@@ -14,8 +14,8 @@ import (
 
 var (
 	// ErrUnsupportedContentType is returned when a PKCS7 content is not supported.
-	// Currently only Data (1.2.840.113549.1.7.1), Signed Data (1.2.840.113549.1.7.2),
-	// and Enveloped Data are supported (1.2.840.113549.1.7.3)
+	// Currently only Data (1.2.840.113549.1.7.1) and
+	// Signed Data (1.2.840.113549.1.7.2) are supported.
 	ErrUnsupportedContentType = errors.New("pkcs7: cannot parse data: unimplemented content type")
 
 	// ErrWrongType is returned by methods that make assumptions about types.
@@ -42,13 +42,13 @@ var (
 //   content [0] EXPLICIT ANY DEFINED BY contentType }
 //
 // ContentType ::= OBJECT IDENTIFIER
-type contentInfo struct {
+type ContentInfo struct {
 	ContentType asn1.ObjectIdentifier
 	Content     asn1.RawValue `asn1:"explicit,tag:0"`
 }
 
-// signedDataContent gets the content assuming contentType is signedData.
-func (ci contentInfo) signedDataContent() (sd signedData, err error) {
+// SignedDataContent gets the content assuming contentType is signedData.
+func (ci ContentInfo) SignedDataContent() (sd SignedData, err error) {
 	if !ci.ContentType.Equal(oidSignedData) {
 		err = ErrWrongType
 		return
@@ -70,14 +70,14 @@ func (ci contentInfo) signedDataContent() (sd signedData, err error) {
 //   eContent [0] EXPLICIT OCTET STRING OPTIONAL }
 //
 // ContentType ::= OBJECT IDENTIFIER
-type encapsulatedContentInfo struct {
+type EncapsulatedContentInfo struct {
 	EContentType asn1.ObjectIdentifier
 	EContent     asn1.RawValue `asn1:"optional,explicit,tag:0"`
 }
 
-// dataEContent gets the EContent assuming EContentType is data. A nil byte
+// DataEContent gets the EContent assuming EContentType is data. A nil byte
 // slice is returned if the OPTIONAL eContent field is missing.
-func (eci encapsulatedContentInfo) dataEContent() ([]byte, error) {
+func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
 	if !eci.EContentType.Equal(oidData) {
 		return nil, ErrWrongType
 	}
@@ -90,7 +90,7 @@ func (eci encapsulatedContentInfo) dataEContent() ([]byte, error) {
 //   attrValues SET OF AttributeValue }
 //
 // AttributeValue ::= ANY
-type attribute struct {
+type Attribute struct {
 	Type asn1.ObjectIdentifier
 
 	// This should be a SET OF ANY, but Go's asn1 parser can't handle slices of
@@ -98,22 +98,22 @@ type attribute struct {
 	RawValue asn1.RawValue
 }
 
-// value further decodes the attribute value as a SET OF ANY, which Go's asn1
+// Value further decodes the attribute Value as a SET OF ANY, which Go's asn1
 // parser can't handle directly.
-func (a attribute) value() (anySet, error) {
-	return decodeAnySet(a.RawValue)
+func (a Attribute) Value() (AnySet, error) {
+	return DecodeAnySet(a.RawValue)
 }
 
 // SignedAttributes ::= SET SIZE (1..MAX) OF Attribute
 //
 // UnsignedAttributes ::= SET SIZE (1..MAX) OF Attribute
-type attributes []attribute
+type attributes []Attribute
 
-// getOnlyAttributeValueBytes gets an attribute value, returning an error if the
+// GetOnlyAttributeValueBytes gets an attribute value, returning an error if the
 // attribute occurs multiple times or have multiple values.
-func (attrs attributes) getOnlyAttributeValueBytes(oid asn1.ObjectIdentifier) (rv asn1.RawValue, err error) {
-	var vals []anySet
-	if vals, err = attrs.getValues(oid); err != nil {
+func (attrs attributes) GetOnlyAttributeValueBytes(oid asn1.ObjectIdentifier) (rv asn1.RawValue, err error) {
+	var vals []AnySet
+	if vals, err = attrs.GetValues(oid); err != nil {
 		return
 	}
 	if len(vals) != 1 {
@@ -131,15 +131,15 @@ func (attrs attributes) getOnlyAttributeValueBytes(oid asn1.ObjectIdentifier) (r
 // get retreives the attributes with the given OID. A nil value is returned if
 // the OPTIONAL SET of Attributes is missing from the SignerInfo. An empty slice
 // is returned if the specified attribute isn't in the set.
-func (attrs attributes) getValues(oid asn1.ObjectIdentifier) ([]anySet, error) {
+func (attrs attributes) GetValues(oid asn1.ObjectIdentifier) ([]AnySet, error) {
 	if attrs == nil {
 		return nil, nil
 	}
 
-	vals := []anySet{}
+	vals := []AnySet{}
 	for _, attr := range attrs {
 		if attr.Type.Equal(oid) {
-			val, err := attr.value()
+			val, err := attr.Value()
 			if err != nil {
 				return nil, err
 			}
@@ -156,7 +156,7 @@ func (attrs attributes) getValues(oid asn1.ObjectIdentifier) ([]anySet, error) {
 // 	serialNumber CertificateSerialNumber }
 //
 // CertificateSerialNumber ::= INTEGER
-type issuerAndSerialNumber struct {
+type IssuerAndSerialNumber struct {
 	Issuer       pkix.RDNSequence
 	SerialNumber int
 }
@@ -186,7 +186,7 @@ type issuerAndSerialNumber struct {
 // SignatureValue ::= OCTET STRING
 //
 // UnsignedAttributes ::= SET SIZE (1..MAX) OF Attribute
-type signerInfo struct {
+type SignerInfo struct {
 	Version            int
 	SID                asn1.RawValue
 	DigestAlgorithm    pkix.AlgorithmIdentifier
@@ -196,8 +196,8 @@ type signerInfo struct {
 	UnsignedAttrs      attributes `asn1:"set,optional,tag:1"`
 }
 
-// issuerAndSerialNumberSID gets the SID, assuming it is a issuerAndSerialNumber.
-func (si signerInfo) issuerAndSerialNumberSID() (isn issuerAndSerialNumber, err error) {
+// IssuerAndSerialNumberSID gets the SID, assuming it is a issuerAndSerialNumber.
+func (si SignerInfo) IssuerAndSerialNumberSID() (isn IssuerAndSerialNumber, err error) {
 	if si.SID.Class != asn1.ClassUniversal || si.SID.Tag != asn1.TagSequence {
 		err = ErrWrongType
 		return
@@ -211,8 +211,8 @@ func (si signerInfo) issuerAndSerialNumberSID() (isn issuerAndSerialNumber, err 
 	return
 }
 
-// subjectKeyIdentifierSID gets the SID, assuming it is a subjectKeyIdentifier.
-func (si signerInfo) subjectKeyIdentifierSID() ([]byte, error) {
+// SubjectKeyIdentifierSID gets the SID, assuming it is a subjectKeyIdentifier.
+func (si SignerInfo) SubjectKeyIdentifierSID() ([]byte, error) {
 	if si.SID.Class != asn1.ClassContextSpecific || si.SID.Tag != 0 {
 		return nil, ErrWrongType
 	}
@@ -220,10 +220,10 @@ func (si signerInfo) subjectKeyIdentifierSID() ([]byte, error) {
 	return si.SID.Bytes, nil
 }
 
-// getContentTypeAttribute gets the signed ContentType attribute from the
+// GetContentTypeAttribute gets the signed ContentType attribute from the
 // SignerInfo.
-func (si signerInfo) getContentTypeAttribute() (asn1.ObjectIdentifier, error) {
-	rv, err := si.SignedAttrs.getOnlyAttributeValueBytes(oidAttributeContentType)
+func (si SignerInfo) GetContentTypeAttribute() (asn1.ObjectIdentifier, error) {
+	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oidAttributeContentType)
 	if err != nil {
 		return nil, err
 	}
@@ -238,10 +238,10 @@ func (si signerInfo) getContentTypeAttribute() (asn1.ObjectIdentifier, error) {
 	return ct, nil
 }
 
-// getMessageDigestAttribute gets the signed MessageDigest attribute from the
+// GetMessageDigestAttribute gets the signed MessageDigest attribute from the
 // SignerInfo.
-func (si signerInfo) getMessageDigestAttribute() ([]byte, error) {
-	rv, err := si.SignedAttrs.getOnlyAttributeValueBytes(oidAttributeMessageDigest)
+func (si SignerInfo) GetMessageDigestAttribute() ([]byte, error) {
+	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oidAttributeMessageDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -255,12 +255,12 @@ func (si signerInfo) getMessageDigestAttribute() ([]byte, error) {
 	return rv.Bytes, nil
 }
 
-// getSigningTimeAttribute gets the signed SigningTime attribute from the
+// GetSigningTimeAttribute gets the signed SigningTime attribute from the
 // SignerInfo.
-func (si signerInfo) getSigningTimeAttribute() (time.Time, error) {
+func (si SignerInfo) GetSigningTimeAttribute() (time.Time, error) {
 	var t time.Time
 
-	rv, err := si.SignedAttrs.getOnlyAttributeValueBytes(oidAttributeSigningTime)
+	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oidAttributeSigningTime)
 	if err != nil {
 		return t, err
 	}
@@ -317,17 +317,17 @@ func (si signerInfo) getSigningTimeAttribute() (time.Time, error) {
 //   otherRevInfo ANY DEFINED BY otherRevInfoFormat }
 //
 // SignerInfos ::= SET OF SignerInfo
-type signedData struct {
+type SignedData struct {
 	Version          int
 	DigestAlgorithms []pkix.AlgorithmIdentifier `asn1:"set"`
-	EncapContentInfo encapsulatedContentInfo
+	EncapContentInfo EncapsulatedContentInfo
 	Certificates     []asn1.RawValue `asn1:"optional,set,tag:0"`
 	CRLs             []asn1.RawValue `asn1:"optional,set,tag:1"`
-	SignerInfos      []signerInfo    `asn1:"set"`
+	SignerInfos      []SignerInfo    `asn1:"set"`
 }
 
-// x509Certificates gets the certificates, assuming that they're X.509 encoded.
-func (sd signedData) x509Certificates() ([]*x509.Certificate, error) {
+// X509Certificates gets the certificates, assuming that they're X.509 encoded.
+func (sd SignedData) X509Certificates() ([]*x509.Certificate, error) {
 	// Certificates field is optional. Handle missing value.
 	if sd.Certificates == nil {
 		return nil, nil
@@ -355,8 +355,8 @@ func (sd signedData) x509Certificates() ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
-// ParseContentInfo parses a top-level CMS ContentInfo packet.
-func ParseContentInfo(ber []byte) (ci contentInfo, err error) {
+// ParseContentInfo parses a top-level ContentInfo type from BER encoded data.
+func ParseContentInfo(ber []byte) (ci ContentInfo, err error) {
 	var der []byte
 	if der, err = ber2der(ber); err != nil {
 		return

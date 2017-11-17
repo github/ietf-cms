@@ -1,18 +1,18 @@
-package pkcs7
+package protocol
 
 import (
 	"encoding/asn1"
 	"fmt"
 )
 
-// anySet is a helper for dealing with SET OF ANY types.
-type anySet struct {
+// AnySet is a helper for dealing with SET OF ANY types.
+type AnySet struct {
 	Elements []asn1.RawValue `asn1:"set"`
 }
 
-// decodeAnySet manually decodes a SET OF ANY type, since Go's parser can't
+// DecodeAnySet manually decodes a SET OF ANY type, since Go's parser can't
 // handle them.
-func decodeAnySet(rv asn1.RawValue) (as anySet, err error) {
+func DecodeAnySet(rv asn1.RawValue) (as AnySet, err error) {
 	// Make sure it's really a SET.
 	if rv.Class != asn1.ClassUniversal {
 		err = fmt.Errorf("Bad class. Expecting %d, got %d", asn1.ClassUniversal, rv.Class)
@@ -36,9 +36,9 @@ func decodeAnySet(rv asn1.RawValue) (as anySet, err error) {
 	return
 }
 
-// encode manually encodes a SET OF ANY type, since Go's parser can't handle
+// Encode manually encodes a SET OF ANY type, since Go's parser can't handle
 // them.
-func (as anySet) encode(dst *asn1.RawValue) (err error) {
+func (as AnySet) Encode(dst *asn1.RawValue) (err error) {
 	dst.Class = asn1.ClassUniversal
 	dst.Tag = asn1.TagSet
 	dst.IsCompound = true

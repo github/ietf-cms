@@ -1,4 +1,4 @@
-package pkcs7
+package protocol
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ func TestAnySet(t *testing.T) {
 		t.Fatal("trailing data")
 	}
 
-	as, err := decodeAnySet(rv)
+	as, err := DecodeAnySet(rv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestAnySet(t *testing.T) {
 	}
 
 	var rv2 asn1.RawValue
-	if err := as.encode(&rv2); err != nil {
+	if err := as.Encode(&rv2); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(rv.FullBytes, rv2.FullBytes) {

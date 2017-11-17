@@ -1,4 +1,4 @@
-package pkcs7
+package protocol
 
 import (
 	"bytes"
@@ -240,7 +240,7 @@ func readObject(ber []byte, offset int) (asn1Object, int, error) {
 }
 
 func isIndefiniteTermination(ber []byte, offset int) (bool, error) {
-	if len(ber) - offset < 2 {
+	if len(ber)-offset < 2 {
 		return false, errors.New("ber2der: Invalid BER format")
 	}
 
