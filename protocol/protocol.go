@@ -2,11 +2,14 @@
 package protocol
 
 import (
+	"bytes"
+	"crypto"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	_ "crypto/sha1" // for crypto.SHA1
@@ -35,6 +38,47 @@ var (
 	oidAttributeContentType   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 3}
 	oidAttributeMessageDigest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 4}
 	oidAttributeSigningTime   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 5}
+
+	// Signature Algorithm  OIDs
+	oidSignatureAlgorithmRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
+	oidSignatureAlgorithmECDSA = asn1.ObjectIdentifier{1, 2, 840, 10045, 2, 1}
+
+	// Digest Algorithm OIDs
+	oidDigestAlgorithmSHA1   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	oidDigestAlgorithmMD5    = asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 5}
+	oidDigestAlgorithmSHA256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	oidDigestAlgorithmSHA384 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
+	oidDigestAlgorithmSHA512 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
+
+	// X509 extensions
+	oidSubjectKeyIdentifier = asn1.ObjectIdentifier{2, 5, 29, 14}
+
+	// digestAlgorithmHash maps digest OIDs to crypto.Hash values.
+	digestAlgorithmHash = map[string]crypto.Hash{
+		oidDigestAlgorithmSHA1.String():   crypto.SHA1,
+		oidDigestAlgorithmMD5.String():    crypto.MD5,
+		oidDigestAlgorithmSHA256.String(): crypto.SHA256,
+		oidDigestAlgorithmSHA384.String(): crypto.SHA384,
+		oidDigestAlgorithmSHA512.String(): crypto.SHA512,
+	}
+
+	// digestAlgorithmHash maps digest and signature OIDs to
+	// x509.SignatureAlgorithm values.
+	signatureAlgorithmHash = map[string]map[string]x509.SignatureAlgorithm{
+		oidSignatureAlgorithmRSA.String(): map[string]x509.SignatureAlgorithm{
+			oidDigestAlgorithmSHA1.String():   x509.SHA1WithRSA,
+			oidDigestAlgorithmMD5.String():    x509.MD5WithRSA,
+			oidDigestAlgorithmSHA256.String(): x509.SHA256WithRSA,
+			oidDigestAlgorithmSHA384.String(): x509.SHA384WithRSA,
+			oidDigestAlgorithmSHA512.String(): x509.SHA512WithRSA,
+		},
+		oidSignatureAlgorithmECDSA.String(): map[string]x509.SignatureAlgorithm{
+			oidDigestAlgorithmSHA1.String():   x509.ECDSAWithSHA1,
+			oidDigestAlgorithmSHA256.String(): x509.ECDSAWithSHA256,
+			oidDigestAlgorithmSHA384.String(): x509.ECDSAWithSHA384,
+			oidDigestAlgorithmSHA512.String(): x509.ECDSAWithSHA512,
+		},
+	}
 )
 
 // ContentInfo ::= SEQUENCE {
@@ -81,8 +125,18 @@ func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
 	if !eci.EContentType.Equal(oidData) {
 		return nil, ErrWrongType
 	}
+	if eci.EContent.Bytes == nil {
+		return nil, nil
+	}
 
-	return eci.EContent.Bytes, nil
+	var data []byte
+	if rest, err := asn1.Unmarshal(eci.EContent.Bytes, &data); err != nil {
+		return nil, err
+	} else if len(rest) > 0 {
+		return nil, errors.New("unexpected trailing data")
+	}
+
+	return data, nil
 }
 
 // Attribute ::= SEQUENCE {
@@ -104,14 +158,42 @@ func (a Attribute) Value() (AnySet, error) {
 	return DecodeAnySet(a.RawValue)
 }
 
+// Attributes is a common Go type for SignedAttributes and UnsignedAttributes.
+//
 // SignedAttributes ::= SET SIZE (1..MAX) OF Attribute
 //
 // UnsignedAttributes ::= SET SIZE (1..MAX) OF Attribute
-type attributes []Attribute
+type Attributes []Attribute
+
+// MarshaledForSigning DER encodes the Attributes as needed for signing
+// SignedAttributes. RFC5652 explains this encoding:
+//   A separate encoding of the signedAttrs field is performed for message
+//   digest calculation. The IMPLICIT [0] tag in the signedAttrs is not used for
+//   the DER encoding, rather an EXPLICIT SET OF tag is used.  That is, the DER
+//   encoding of the EXPLICIT SET OF tag, rather than of the IMPLICIT [0] tag,
+//   MUST be included in the message digest calculation along with the length
+//   and content octets of the SignedAttributes value.
+func (attrs Attributes) MarshaledForSigning() ([]byte, error) {
+	seq, err := asn1.Marshal(struct {
+		Attributes `asn1:"set"`
+	}{attrs})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// unwrap the outer SEQUENCE
+	var raw asn1.RawValue
+	if _, err = asn1.Unmarshal(seq, &raw); err != nil {
+		return nil, err
+	}
+
+	return raw.Bytes, nil
+}
 
 // GetOnlyAttributeValueBytes gets an attribute value, returning an error if the
-// attribute occurs multiple times or have multiple values.
-func (attrs attributes) GetOnlyAttributeValueBytes(oid asn1.ObjectIdentifier) (rv asn1.RawValue, err error) {
+// attribute occurs multiple times or has multiple values.
+func (attrs Attributes) GetOnlyAttributeValueBytes(oid asn1.ObjectIdentifier) (rv asn1.RawValue, err error) {
 	var vals []AnySet
 	if vals, err = attrs.GetValues(oid); err != nil {
 		return
@@ -128,10 +210,10 @@ func (attrs attributes) GetOnlyAttributeValueBytes(oid asn1.ObjectIdentifier) (r
 	return vals[0].Elements[0], nil
 }
 
-// get retreives the attributes with the given OID. A nil value is returned if
-// the OPTIONAL SET of Attributes is missing from the SignerInfo. An empty slice
-// is returned if the specified attribute isn't in the set.
-func (attrs attributes) GetValues(oid asn1.ObjectIdentifier) ([]AnySet, error) {
+// GetValues retreives the attributes with the given OID. A nil value is
+// returned if the OPTIONAL SET of Attributes is missing from the SignerInfo. An
+// empty slice is returned if the specified attribute isn't in the set.
+func (attrs Attributes) GetValues(oid asn1.ObjectIdentifier) ([]AnySet, error) {
 	if attrs == nil {
 		return nil, nil
 	}
@@ -157,8 +239,8 @@ func (attrs attributes) GetValues(oid asn1.ObjectIdentifier) ([]AnySet, error) {
 //
 // CertificateSerialNumber ::= INTEGER
 type IssuerAndSerialNumber struct {
-	Issuer       pkix.RDNSequence
-	SerialNumber int
+	Issuer       asn1.RawValue
+	SerialNumber *big.Int
 }
 
 // SignerInfo ::= SEQUENCE {
@@ -190,14 +272,51 @@ type SignerInfo struct {
 	Version            int
 	SID                asn1.RawValue
 	DigestAlgorithm    pkix.AlgorithmIdentifier
-	SignedAttrs        attributes `asn1:"optional,tag:0"`
+	SignedAttrs        Attributes `asn1:"optional,tag:0"`
 	SignatureAlgorithm pkix.AlgorithmIdentifier
 	Signature          []byte
-	UnsignedAttrs      attributes `asn1:"set,optional,tag:1"`
+	UnsignedAttrs      Attributes `asn1:"set,optional,tag:1"`
 }
 
-// IssuerAndSerialNumberSID gets the SID, assuming it is a issuerAndSerialNumber.
-func (si SignerInfo) IssuerAndSerialNumberSID() (isn IssuerAndSerialNumber, err error) {
+// FindCertificate finds this SignerInfo's certificate in a slice of
+// certificates.
+func (si SignerInfo) FindCertificate(certs []*x509.Certificate) (*x509.Certificate, error) {
+	switch si.Version {
+	case 1: // SID is issuer and serial number
+		isn, err := si.issuerAndSerialNumberSID()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cert := range certs {
+			if bytes.Equal(cert.RawIssuer, isn.Issuer.FullBytes) && isn.SerialNumber.Cmp(cert.SerialNumber) == 0 {
+				return cert, nil
+			}
+		}
+	case 3: // SID is SubjectKeyIdentifier
+		ski, err := si.subjectKeyIdentifierSID()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cert := range certs {
+			for _, ext := range cert.Extensions {
+				if oidSubjectKeyIdentifier.Equal(ext.Id) {
+					if bytes.Equal(ski, ext.Value) {
+						return cert, nil
+					}
+				}
+			}
+		}
+	default:
+		return nil, errors.New("unknown SignerInfo version")
+	}
+
+	return nil, errors.New("no matching certificate")
+}
+
+// issuerAndSerialNumberSID gets the SID, assuming it is a issuerAndSerialNumber.
+func (si SignerInfo) issuerAndSerialNumberSID() (isn IssuerAndSerialNumber, err error) {
 	if si.SID.Class != asn1.ClassUniversal || si.SID.Tag != asn1.TagSequence {
 		err = ErrWrongType
 		return
@@ -211,13 +330,30 @@ func (si SignerInfo) IssuerAndSerialNumberSID() (isn IssuerAndSerialNumber, err 
 	return
 }
 
-// SubjectKeyIdentifierSID gets the SID, assuming it is a subjectKeyIdentifier.
-func (si SignerInfo) SubjectKeyIdentifierSID() ([]byte, error) {
+// subjectKeyIdentifierSID gets the SID, assuming it is a subjectKeyIdentifier.
+func (si SignerInfo) subjectKeyIdentifierSID() ([]byte, error) {
 	if si.SID.Class != asn1.ClassContextSpecific || si.SID.Tag != 0 {
 		return nil, ErrWrongType
 	}
 
 	return si.SID.Bytes, nil
+}
+
+// Hash gets the crypto.Hash associated with this SignerInfo's DigestAlgorithm.
+// 0 is returned for unrecognized algorithms.
+func (si SignerInfo) Hash() crypto.Hash {
+	return digestAlgorithmHash[si.DigestAlgorithm.Algorithm.String()]
+}
+
+// X509SignatureAlgorithm gets the x509.SignatureAlgorithm that should be used
+// for verifying this SignerInfo's signature.
+func (si SignerInfo) X509SignatureAlgorithm() x509.SignatureAlgorithm {
+	var (
+		sigOID    = si.SignatureAlgorithm.Algorithm.String()
+		digestOID = si.DigestAlgorithm.Algorithm.String()
+	)
+
+	return signatureAlgorithmHash[sigOID][digestOID]
 }
 
 // GetContentTypeAttribute gets the signed ContentType attribute from the

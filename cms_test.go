@@ -1,120 +1,65 @@
-package protocol
+package cms
 
 import (
 	"bytes"
-	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"io"
 	"strings"
 	"testing"
-	"time"
 )
 
-func TestParseFixtureSignatureOne(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureOne)
+func TestVerify(t *testing.T) {
+	sd, err := ParseSignedData(fixtureSignatureOne)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sd.Verify(); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func TestParseSignatureGPGSM(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureGPGSM)
+func TestVerifyGPGSMDetached(t *testing.T) {
+	sd, err := ParseSignedData(fixtureSignatureGPGSM)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sd.VerifyDetached([]byte("hello, world!\n")); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func TestParseSignatureNoCertsGPGSM(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureNoCertsGPGSM)
+func TestVerifyGPGSMNoCerts(t *testing.T) {
+	sd, err := ParseSignedData(fixtureSignatureNoCertsGPGSM)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sd.VerifyDetached([]byte("hello, world!\n")); err.Error() != "no matching certificate" {
+		t.Fatal(err)
+	}
 }
 
-func TestParseSignatureOpenSSLAttached(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureOpenSSLAttached)
+func TestVerifyOpenSSLAttached(t *testing.T) {
+	sd, err := ParseSignedData(fixtureSignatureOpenSSLAttached)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sd.Verify(); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func TestParseSignatureOpenSSLDetached(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureOpenSSLDetached)
-}
-
-func ParseContentInfoHelper(t *testing.T, ber []byte) {
-	ci, err := ParseContentInfo(ber)
+func TestVerifyOpenSSLDetached(t *testing.T) {
+	sd, err := ParseSignedData(fixtureSignatureOpenSSLDetached)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sd, err := ci.SignedDataContent()
-	if err != nil {
+	if err := sd.VerifyDetached([]byte("hello, world!")); err != nil {
 		t.Fatal(err)
-	}
-
-	certs, err := sd.X509Certificates()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !sd.EncapContentInfo.EContentType.Equal(oidData) {
-		t.Fatalf("expected %s content, got %s", oidData.String(), sd.EncapContentInfo.EContentType.String())
-	}
-
-	if _, err = sd.EncapContentInfo.DataEContent(); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, si := range sd.SignerInfos {
-		if _, err = si.FindCertificate(certs); err != nil && len(certs) > 0 {
-			t.Fatal(err)
-		}
-
-		if ct, errr := si.GetContentTypeAttribute(); errr != nil {
-			t.Fatal(errr)
-		} else {
-			// signerInfo contentType attribute must match signedData
-			// encapsulatedContentInfo content type.
-			if !ct.Equal(sd.EncapContentInfo.EContentType) {
-				t.Fatalf("expected %s content, got %s", sd.EncapContentInfo.EContentType.String(), ct.String())
-			}
-		}
-
-		if md, errr := si.GetMessageDigestAttribute(); errr != nil {
-			t.Fatal(errr)
-		} else if len(md) == 0 {
-			t.Fatal("nil/empty message digest attribute")
-		} else if len(md) != si.Hash().Size() {
-			t.Fatalf("expected message digest of length %d, got %d", si.Hash().Size(), len(md))
-		}
-
-		if algo := si.X509SignatureAlgorithm(); algo == x509.UnknownSignatureAlgorithm {
-			t.Fatalf("unknown signature algorithm")
-		}
-
-		var nilTime time.Time
-		if st, errr := si.GetSigningTimeAttribute(); errr != nil {
-			t.Fatal(errr)
-		} else if st == nilTime {
-			t.Fatal("0 value signing time")
-		}
-	}
-
-	// round trip contentInfo
-	der, err := ber2der(ber)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	der2, err := asn1.Marshal(ci)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(der, der2) {
-		t.Fatal("re-encoded contentInfo doesn't match original")
-	}
-
-	// round trip signedData
-	der = ci.Content.Bytes
-
-	der2, err = asn1.Marshal(sd)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(der, der2) {
-		t.Fatal("re-encoded signedData doesn't match original")
 	}
 }
 
