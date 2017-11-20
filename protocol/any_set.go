@@ -10,6 +10,11 @@ type AnySet struct {
 	Elements []asn1.RawValue `asn1:"set"`
 }
 
+// NewAnySet creates a new AnySet.
+func NewAnySet(elts ...asn1.RawValue) AnySet {
+	return AnySet{elts}
+}
+
 // DecodeAnySet manually decodes a SET OF ANY type, since Go's parser can't
 // handle them.
 func DecodeAnySet(rv asn1.RawValue) (as AnySet, err error) {

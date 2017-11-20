@@ -53,8 +53,8 @@ var (
 	// X509 extensions
 	oidSubjectKeyIdentifier = asn1.ObjectIdentifier{2, 5, 29, 14}
 
-	// digestAlgorithmHash maps digest OIDs to crypto.Hash values.
-	digestAlgorithmHash = map[string]crypto.Hash{
+	// digestAlgorithmToHash maps digest OIDs to crypto.Hash values.
+	digestAlgorithmToHash = map[string]crypto.Hash{
 		oidDigestAlgorithmSHA1.String():   crypto.SHA1,
 		oidDigestAlgorithmMD5.String():    crypto.MD5,
 		oidDigestAlgorithmSHA256.String(): crypto.SHA256,
@@ -62,9 +62,23 @@ var (
 		oidDigestAlgorithmSHA512.String(): crypto.SHA512,
 	}
 
+	// signatureAlgorithmToDigestAlgorithm maps x509.SignatureAlgorithm to
+	// digestAlgorithm OIDs.
+	signatureAlgorithmToDigestAlgorithm = map[x509.SignatureAlgorithm]asn1.ObjectIdentifier{
+		x509.SHA1WithRSA:     oidDigestAlgorithmSHA1,
+		x509.MD5WithRSA:      oidDigestAlgorithmMD5,
+		x509.SHA256WithRSA:   oidDigestAlgorithmSHA256,
+		x509.SHA384WithRSA:   oidDigestAlgorithmSHA384,
+		x509.SHA512WithRSA:   oidDigestAlgorithmSHA512,
+		x509.ECDSAWithSHA1:   oidDigestAlgorithmSHA1,
+		x509.ECDSAWithSHA256: oidDigestAlgorithmSHA256,
+		x509.ECDSAWithSHA384: oidDigestAlgorithmSHA384,
+		x509.ECDSAWithSHA512: oidDigestAlgorithmSHA512,
+	}
+
 	// digestAlgorithmHash maps digest and signature OIDs to
 	// x509.SignatureAlgorithm values.
-	signatureAlgorithmHash = map[string]map[string]x509.SignatureAlgorithm{
+	signatureAlgorithms = map[string]map[string]x509.SignatureAlgorithm{
 		oidSignatureAlgorithmRSA.String(): map[string]x509.SignatureAlgorithm{
 			oidDigestAlgorithmSHA1.String():   x509.SHA1WithRSA,
 			oidDigestAlgorithmMD5.String():    x509.MD5WithRSA,
@@ -119,6 +133,25 @@ type EncapsulatedContentInfo struct {
 	EContent     asn1.RawValue `asn1:"optional,explicit,tag:0"`
 }
 
+// NewDataEncapsulatedContentInfo creates a new EncapsulatedContentInfo of type
+// id-data.
+func NewDataEncapsulatedContentInfo(data []byte) (EncapsulatedContentInfo, error) {
+	octetString, err := asn1.Marshal(data)
+	if err != nil {
+		return EncapsulatedContentInfo{}, err
+	}
+
+	return EncapsulatedContentInfo{
+		EContentType: oidData,
+		EContent: asn1.RawValue{
+			Class:      asn1.ClassContextSpecific,
+			Tag:        0,
+			Bytes:      octetString,
+			IsCompound: true,
+		},
+	}, nil
+}
+
 // DataEContent gets the EContent assuming EContentType is data. A nil byte
 // slice is returned if the OPTIONAL eContent field is missing.
 func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
@@ -150,6 +183,27 @@ type Attribute struct {
 	// This should be a SET OF ANY, but Go's asn1 parser can't handle slices of
 	// RawValues. Use value() to get an AnySet of the value.
 	RawValue asn1.RawValue
+}
+
+// NewAttribute creates a single-value Attribute.
+func NewAttribute(typ asn1.ObjectIdentifier, val interface{}) (attr Attribute, err error) {
+	var der []byte
+	if der, err = asn1.Marshal(val); err != nil {
+		return
+	}
+
+	var rv asn1.RawValue
+	if _, err = asn1.Unmarshal(der, &rv); err != nil {
+		return
+	}
+
+	if err = NewAnySet(rv).Encode(&attr.RawValue); err != nil {
+		return
+	}
+
+	attr.Type = typ
+
+	return
 }
 
 // Value further decodes the attribute Value as a SET OF ANY, which Go's asn1
@@ -241,6 +295,29 @@ func (attrs Attributes) GetValues(oid asn1.ObjectIdentifier) ([]AnySet, error) {
 type IssuerAndSerialNumber struct {
 	Issuer       asn1.RawValue
 	SerialNumber *big.Int
+}
+
+// NewIssuerAndSerialNumber creates a IssuerAndSerialNumber SID for the given
+// cert.
+func NewIssuerAndSerialNumber(cert *x509.Certificate) (rv asn1.RawValue, err error) {
+	sid := IssuerAndSerialNumber{
+		SerialNumber: new(big.Int).Set(cert.SerialNumber),
+	}
+
+	if _, err = asn1.Unmarshal(cert.RawIssuer, &sid.Issuer); err != nil {
+		return
+	}
+
+	var der []byte
+	if der, err = asn1.Marshal(sid); err != nil {
+		return
+	}
+
+	if _, err = asn1.Unmarshal(der, &rv); err != nil {
+		return
+	}
+
+	return
 }
 
 // SignerInfo ::= SEQUENCE {
@@ -342,7 +419,7 @@ func (si SignerInfo) subjectKeyIdentifierSID() ([]byte, error) {
 // Hash gets the crypto.Hash associated with this SignerInfo's DigestAlgorithm.
 // 0 is returned for unrecognized algorithms.
 func (si SignerInfo) Hash() crypto.Hash {
-	return digestAlgorithmHash[si.DigestAlgorithm.Algorithm.String()]
+	return digestAlgorithmToHash[si.DigestAlgorithm.Algorithm.String()]
 }
 
 // X509SignatureAlgorithm gets the x509.SignatureAlgorithm that should be used
@@ -353,7 +430,7 @@ func (si SignerInfo) X509SignatureAlgorithm() x509.SignatureAlgorithm {
 		digestOID = si.DigestAlgorithm.Algorithm.String()
 	)
 
-	return signatureAlgorithmHash[sigOID][digestOID]
+	return signatureAlgorithms[sigOID][digestOID]
 }
 
 // GetContentTypeAttribute gets the signed ContentType attribute from the

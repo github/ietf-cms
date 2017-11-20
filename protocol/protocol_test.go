@@ -11,27 +11,170 @@ import (
 	"time"
 )
 
+func TestEncapsulatedContentInfo(t *testing.T) {
+	ci, _ := ParseContentInfo(fixtureSignatureOpenSSLAttached)
+	sd, _ := ci.SignedDataContent()
+	oldECI := sd.EncapContentInfo
+
+	oldData, err := oldECI.DataEContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newECI, err := NewDataEncapsulatedContentInfo(oldData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newData, err := newECI.DataEContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldData, newData) {
+		t.Fatal("ECI data round trip mismatch: ", oldData, " != ", newData)
+	}
+
+	oldDER, err := asn1.Marshal(oldECI)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newDER, err := asn1.Marshal(newECI)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldDER, newDER) {
+		t.Fatal("ECI round trip mismatch: ", oldDER, " != ", newDER)
+	}
+}
+
+func TestMessageDigestAttribute(t *testing.T) {
+	ci, _ := ParseContentInfo(fixtureSignatureOpenSSLAttached)
+	sd, _ := ci.SignedDataContent()
+	si := sd.SignerInfos[0]
+
+	oldAttrVal, err := si.GetMessageDigestAttribute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var oldAttr Attribute
+	for _, attr := range si.SignedAttrs {
+		if attr.Type.Equal(oidAttributeMessageDigest) {
+			oldAttr = attr
+			break
+		}
+	}
+
+	newAttr, err := NewAttribute(oidAttributeMessageDigest, oldAttrVal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldAttr.RawValue.Bytes, newAttr.RawValue.Bytes) {
+		t.Fatal("raw value mismatch")
+	}
+
+	oldDER, err := asn1.Marshal(oldAttr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newDER, err := asn1.Marshal(newAttr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldDER, newDER) {
+		t.Fatal("der mismatch")
+	}
+}
+
+func TestContentTypeAttribute(t *testing.T) {
+	ci, _ := ParseContentInfo(fixtureSignatureOpenSSLAttached)
+	sd, _ := ci.SignedDataContent()
+	si := sd.SignerInfos[0]
+
+	oldAttrVal, err := si.GetContentTypeAttribute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var oldAttr Attribute
+	for _, attr := range si.SignedAttrs {
+		if attr.Type.Equal(oidAttributeContentType) {
+			oldAttr = attr
+			break
+		}
+	}
+
+	newAttr, err := NewAttribute(oidAttributeContentType, oldAttrVal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldAttr.RawValue.Bytes, newAttr.RawValue.Bytes) {
+		t.Fatal("raw value mismatch")
+	}
+
+	oldDER, err := asn1.Marshal(oldAttr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newDER, err := asn1.Marshal(newAttr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldDER, newDER) {
+		t.Fatal("der mismatch")
+	}
+}
+
+func TestIssuerAndSerialNumber(t *testing.T) {
+	ci, _ := ParseContentInfo(fixtureSignatureOpenSSLAttached)
+	sd, _ := ci.SignedDataContent()
+	si := sd.SignerInfos[0]
+	certs, _ := sd.X509Certificates()
+	cert, _ := si.FindCertificate(certs)
+
+	newISN, err := NewIssuerAndSerialNumber(cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldDER, _ := asn1.Marshal(si.SID)
+	newDER, _ := asn1.Marshal(newISN)
+
+	if !bytes.Equal(oldDER, newDER) {
+		t.Fatal("SID mismatch")
+	}
+}
+
 func TestParseFixtureSignatureOne(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureOne)
+	testParseContentInfo(t, fixtureSignatureOne)
 }
 
 func TestParseSignatureGPGSM(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureGPGSM)
+	testParseContentInfo(t, fixtureSignatureGPGSM)
 }
 
 func TestParseSignatureNoCertsGPGSM(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureNoCertsGPGSM)
+	testParseContentInfo(t, fixtureSignatureNoCertsGPGSM)
 }
 
 func TestParseSignatureOpenSSLAttached(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureOpenSSLAttached)
+	testParseContentInfo(t, fixtureSignatureOpenSSLAttached)
 }
 
 func TestParseSignatureOpenSSLDetached(t *testing.T) {
-	ParseContentInfoHelper(t, fixtureSignatureOpenSSLDetached)
+	testParseContentInfo(t, fixtureSignatureOpenSSLDetached)
 }
 
-func ParseContentInfoHelper(t *testing.T, ber []byte) {
+func testParseContentInfo(t *testing.T, ber []byte) {
 	ci, err := ParseContentInfo(ber)
 	if err != nil {
 		t.Fatal(err)
