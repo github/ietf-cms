@@ -1,2 +1,2 @@
 language: go
-go: master
+go: 1.9.X
