@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
@@ -9,7 +10,76 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/pkcs12"
 )
+
+func TestSignerInfo(t *testing.T) {
+	priv, cert, err := pkcs12.Decode(fixturePFX, "asdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg := []byte("hello, world!")
+
+	sd, err := NewSignedData(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = sd.AddSignerInfo(cert, priv.(*ecdsa.PrivateKey)); err != nil {
+		t.Fatal(err)
+	}
+
+	der, err := sd.ContentInfoDER()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ci, err := ParseContentInfo(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sd2, err := ci.SignedDataContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg2, err := sd2.EncapContentInfo.DataEContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(msg, msg2) {
+		t.Fatal()
+	}
+
+	// Make detached
+	sd.EncapContentInfo.EContent = asn1.RawValue{}
+
+	der, err = sd.ContentInfoDER()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ci, err = ParseContentInfo(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sd2, err = ci.SignedDataContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg2, err = sd2.EncapContentInfo.DataEContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg2 != nil {
+		t.Fatal()
+	}
+}
 
 func TestEncapsulatedContentInfo(t *testing.T) {
 	ci, _ := ParseContentInfo(fixtureSignatureOpenSSLAttached)
@@ -217,8 +287,6 @@ func testParseContentInfo(t *testing.T, ber []byte) {
 			t.Fatal(errr)
 		} else if len(md) == 0 {
 			t.Fatal("nil/empty message digest attribute")
-		} else if len(md) != si.Hash().Size() {
-			t.Fatalf("expected message digest of length %d, got %d", si.Hash().Size(), len(md))
 		}
 
 		if algo := si.X509SignatureAlgorithm(); algo == x509.UnknownSignatureAlgorithm {
@@ -251,7 +319,7 @@ func testParseContentInfo(t *testing.T, ber []byte) {
 	// round trip signedData
 	der = ci.Content.Bytes
 
-	der2, err = asn1.Marshal(sd)
+	der2, err = asn1.Marshal(*sd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,6 +457,27 @@ var fixtureSignatureOpenSSLDetached = mustBase64Decode("" +
 	"MB2K4/ZF35HddfblHIgQ+9gWfHE52KMur4XeI5sc/izMNuPyR8VVB7St5JLMepHj" +
 	"UtbPYBJ0bRSwDX1JAoB+Ze/mPvCmo/pS5QyYfNvXg3Jw4TVoud5+oUH9r6MwSxzN" +
 	"BSws5SM9d0GAafR+Hj19x9s8ypUjLJmGIAjeTrlgcYUTJjnfEtZBL5Je2FuK",
+)
+
+var fixturePFX = mustBase64Decode("" +
+	"MIIDIgIBAzCCAugGCSqGSIb3DQEHAaCCAtkEggLVMIIC0TCCAccGCSqGSIb3" +
+	"DQEHBqCCAbgwggG0AgEAMIIBrQYJKoZIhvcNAQcBMBwGCiqGSIb3DQEMAQYw" +
+	"DgQIhJhqIE0wYvgCAggAgIIBgFfQz7+5T0RBGtlNHUjM+WmjJFPPhljOcl5v" +
+	"SEFWi2mNpSuUIcaNQlhUTxBX7hUJRq6eW3J5T20hY3WBomC6cy4sRpAZlOSD" +
+	"o/UYrQG6YIFc+X97t8E1M8bihsmp9GEBEdLCDCwhrIpFX7xuxfudYH9MLRKA" +
+	"dKwJ8xqrpFjgFFbosvKHoqi0gH2RLS7+G8V5wReWTOVKvzy3zD8XlMgtdSUn" +
+	"G+MiP0aaa8jFGfprFoeMMJJr5cO89UjjC+qYkcqA9HP7mf2VmenEJSJt7E06" +
+	"51CE3/eaEONgoIDudTXZt8CB4vvbOnL8QfmVp2kzKKl1hsN43jPVvRqbM6+4" +
+	"OR1Yp3T1UVKLcGwpZCh3t/fYgpyjBqrQqEWQzhKs+bTWlCeDpXdxhHJIquHh" +
+	"zZ8Sm2s/r1GDv7kVLw9d8APyWep5WrFVE/r7kN9Ac8tbiqTM54sFMTQLkzhP" +
+	"TIhNdjIQkn8i0H2673cGYkFYWLIO+I8jFhMl3ZBwQt54Wnb35zInpchoQjCC" +
+	"AQIGCSqGSIb3DQEHAaCB9ASB8TCB7jCB6wYLKoZIhvcNAQwKAQKggbQwgbEw" +
+	"HAYKKoZIhvcNAQwBAzAOBAhlMkjWb0xXBAICCAAEgZALV1NzLJa6MAAaYkIs" +
+	"eJRapR+h9Emzew5dstSbB23kMt3PLyafv4M0AvUi3Mk+VEowmL62WhC+PcQf" +
+	"dE4YaW6PvepWjS+gk42RA6hT8zdG2PiP2rhS4wuxs/I/rPQIgY8i3M2RGmrR" +
+	"9CcOFCE7hnpJp/0tm7Trc11SfCNB3MXYSvttL5ZJ29ewYZ9kg+lv0XoxJTAj" +
+	"BgkqhkiG9w0BCRUxFgQU7q/jH1Mc5Ctiwkdl0Hx9xKSYy90wMTAhMAkGBSsO" +
+	"AwIaBQAEFDPX7JM9l8ZnTwGGaDQQvlp7RiBKBAg2WsoFwawSzwICCAA=",
 )
 
 func mustBase64Decode(b64 string) []byte {

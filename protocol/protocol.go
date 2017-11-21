@@ -4,6 +4,7 @@ package protocol
 import (
 	"bytes"
 	"crypto"
+	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -30,6 +31,8 @@ var (
 )
 
 var (
+	nilOID = asn1.ObjectIdentifier(nil)
+
 	// Content type OIDs
 	oidData       = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 1}
 	oidSignedData = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 2}
@@ -76,7 +79,21 @@ var (
 		x509.ECDSAWithSHA512: oidDigestAlgorithmSHA512,
 	}
 
-	// digestAlgorithmHash maps digest and signature OIDs to
+	// signatureAlgorithmToSignatureAlgorithm maps x509.SignatureAlgorithm to
+	// signatureAlgorithm OIDs.
+	signatureAlgorithmToSignatureAlgorithm = map[x509.SignatureAlgorithm]asn1.ObjectIdentifier{
+		x509.SHA1WithRSA:     oidSignatureAlgorithmRSA,
+		x509.MD5WithRSA:      oidSignatureAlgorithmRSA,
+		x509.SHA256WithRSA:   oidSignatureAlgorithmRSA,
+		x509.SHA384WithRSA:   oidSignatureAlgorithmRSA,
+		x509.SHA512WithRSA:   oidSignatureAlgorithmRSA,
+		x509.ECDSAWithSHA1:   oidSignatureAlgorithmECDSA,
+		x509.ECDSAWithSHA256: oidSignatureAlgorithmECDSA,
+		x509.ECDSAWithSHA384: oidSignatureAlgorithmECDSA,
+		x509.ECDSAWithSHA512: oidSignatureAlgorithmECDSA,
+	}
+
+	// signatureAlgorithms maps digest and signature OIDs to
 	// x509.SignatureAlgorithm values.
 	signatureAlgorithms = map[string]map[string]x509.SignatureAlgorithm{
 		oidSignatureAlgorithmRSA.String(): map[string]x509.SignatureAlgorithm{
@@ -105,15 +122,15 @@ type ContentInfo struct {
 	Content     asn1.RawValue `asn1:"explicit,tag:0"`
 }
 
-// SignedDataContent gets the content assuming contentType is signedData.
-func (ci ContentInfo) SignedDataContent() (sd SignedData, err error) {
-	if !ci.ContentType.Equal(oidSignedData) {
-		err = ErrWrongType
+// ParseContentInfo parses a top-level ContentInfo type from BER encoded data.
+func ParseContentInfo(ber []byte) (ci ContentInfo, err error) {
+	var der []byte
+	if der, err = ber2der(ber); err != nil {
 		return
 	}
 
 	var rest []byte
-	if rest, err = asn1.Unmarshal(ci.Content.Bytes, &sd); err != nil {
+	if rest, err = asn1.Unmarshal(der, &ci); err != nil {
 		return
 	}
 	if len(rest) > 0 {
@@ -121,6 +138,22 @@ func (ci ContentInfo) SignedDataContent() (sd SignedData, err error) {
 	}
 
 	return
+}
+
+// SignedDataContent gets the content assuming contentType is signedData.
+func (ci ContentInfo) SignedDataContent() (*SignedData, error) {
+	if !ci.ContentType.Equal(oidSignedData) {
+		return nil, ErrWrongType
+	}
+
+	sd := new(SignedData)
+	if rest, err := asn1.Unmarshal(ci.Content.Bytes, sd); err != nil {
+		return nil, err
+	} else if len(rest) > 0 {
+		return nil, errors.New("unexpected trailing data")
+	}
+
+	return sd, nil
 }
 
 // EncapsulatedContentInfo ::= SEQUENCE {
@@ -539,8 +572,136 @@ type SignedData struct {
 	SignerInfos      []SignerInfo    `asn1:"set"`
 }
 
+// NewSignedData creates a new SignedData.
+func NewSignedData(data []byte) (*SignedData, error) {
+	eci, err := NewDataEncapsulatedContentInfo(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SignedData{
+		Version:          1,
+		DigestAlgorithms: []pkix.AlgorithmIdentifier{},
+		EncapContentInfo: eci,
+		SignerInfos:      []SignerInfo{},
+	}, nil
+}
+
+// AddSignerInfo adds a SignerInfo to the SignedData.
+func (sd *SignedData) AddSignerInfo(cert *x509.Certificate, signer crypto.Signer) error {
+	sid, err := NewIssuerAndSerialNumber(cert)
+	if err != nil {
+		return err
+	}
+
+	digestAlgorithm := signatureAlgorithmToDigestAlgorithm[cert.SignatureAlgorithm]
+	if digestAlgorithm == nil {
+		return errors.New("unsupported digest algorithm")
+	}
+
+	signatureAlgorithm := signatureAlgorithmToSignatureAlgorithm[cert.SignatureAlgorithm]
+	if signatureAlgorithm == nil {
+		return errors.New("unsupported signature algorithm")
+	}
+
+	si := SignerInfo{
+		Version:            1,
+		SID:                sid,
+		DigestAlgorithm:    pkix.AlgorithmIdentifier{Algorithm: digestAlgorithm},
+		SignedAttrs:        nil,
+		SignatureAlgorithm: pkix.AlgorithmIdentifier{Algorithm: signatureAlgorithm},
+		Signature:          nil,
+		UnsignedAttrs:      nil,
+	}
+
+	// Get the message
+	data, err := sd.EncapContentInfo.DataEContent()
+	if err != nil {
+		return err
+	}
+	if data == nil {
+		return errors.New("already detached")
+	}
+
+	// Digest the message.
+	hash := si.Hash()
+	if hash == 0 {
+		return fmt.Errorf("unknown digest algorithm: %s", digestAlgorithm.String())
+	}
+	if !hash.Available() {
+		return fmt.Errorf("Hash not avaialbe: %s", digestAlgorithm.String())
+	}
+	md := hash.New()
+	if _, err = md.Write(data); err != nil {
+		return err
+	}
+
+	// Build our SignedAttributes
+	mdAttr, err := NewAttribute(oidAttributeMessageDigest, md.Sum(nil))
+	if err != nil {
+		return err
+	}
+	ctAttr, err := NewAttribute(oidAttributeContentType, oidData)
+	if err != nil {
+		return err
+	}
+	si.SignedAttrs = append(si.SignedAttrs, mdAttr, ctAttr)
+
+	// Signature is over the marshaled signed attributes
+	sm, err := si.SignedAttrs.MarshaledForSigning()
+	if err != nil {
+		return err
+	}
+	smd := hash.New()
+	if _, errr := smd.Write(sm); errr != nil {
+		return errr
+	}
+	if si.Signature, err = signer.Sign(rand.Reader, smd.Sum(nil), hash); err != nil {
+		return err
+	}
+
+	if err := sd.addCertificate(cert); err != nil {
+		return err
+	}
+
+	sd.addDigestAlgorithm(si.DigestAlgorithm)
+
+	sd.SignerInfos = append(sd.SignerInfos, si)
+
+	return nil
+}
+
+// addCertificate adds a *x509.Certificate.
+func (sd *SignedData) addCertificate(cert *x509.Certificate) error {
+	for _, existing := range sd.Certificates {
+		if bytes.Equal(existing.Bytes, cert.Raw) {
+			return errors.New("certificate already added")
+		}
+	}
+
+	var rv asn1.RawValue
+	if _, err := asn1.Unmarshal(cert.Raw, &rv); err != nil {
+		return err
+	}
+
+	sd.Certificates = append(sd.Certificates, rv)
+
+	return nil
+}
+
+// addDigestAlgorithm adds a new AlgorithmIdentifier if it doesn't exist yet.
+func (sd *SignedData) addDigestAlgorithm(algo pkix.AlgorithmIdentifier) {
+	for _, existing := range sd.DigestAlgorithms {
+		if existing.Algorithm.Equal(algo.Algorithm) {
+			return
+		}
+	}
+
+	sd.DigestAlgorithms = append(sd.DigestAlgorithms, algo)
+}
+
 // X509Certificates gets the certificates, assuming that they're X.509 encoded.
-func (sd SignedData) X509Certificates() ([]*x509.Certificate, error) {
+func (sd *SignedData) X509Certificates() ([]*x509.Certificate, error) {
 	// Certificates field is optional. Handle missing value.
 	if sd.Certificates == nil {
 		return nil, nil
@@ -568,20 +729,22 @@ func (sd SignedData) X509Certificates() ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
-// ParseContentInfo parses a top-level ContentInfo type from BER encoded data.
-func ParseContentInfo(ber []byte) (ci ContentInfo, err error) {
-	var der []byte
-	if der, err = ber2der(ber); err != nil {
-		return
+// ContentInfoDER returns the SignedData wrapped in a ContentInfo packet and DER
+// encoded.
+func (sd *SignedData) ContentInfoDER() ([]byte, error) {
+	der, err := asn1.Marshal(*sd)
+	if err != nil {
+		return nil, err
 	}
 
-	var rest []byte
-	if rest, err = asn1.Unmarshal(der, &ci); err != nil {
-		return
-	}
-	if len(rest) > 0 {
-		err = errors.New("unexpected trailing data")
+	ci := ContentInfo{
+		ContentType: oidSignedData,
+		Content: asn1.RawValue{
+			Class: asn1.ClassContextSpecific,
+			Tag:   0,
+			Bytes: der,
+		},
 	}
 
-	return
+	return asn1.Marshal(ci)
 }
