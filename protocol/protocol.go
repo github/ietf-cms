@@ -169,7 +169,12 @@ type EncapsulatedContentInfo struct {
 // NewDataEncapsulatedContentInfo creates a new EncapsulatedContentInfo of type
 // id-data.
 func NewDataEncapsulatedContentInfo(data []byte) (EncapsulatedContentInfo, error) {
-	octetString, err := asn1.Marshal(data)
+	octetString, err := asn1.Marshal(asn1.RawValue{
+		Class:      asn1.ClassUniversal,
+		Tag:        asn1.TagOctetString,
+		Bytes:      data,
+		IsCompound: false,
+	})
 	if err != nil {
 		return EncapsulatedContentInfo{}, err
 	}
@@ -195,14 +200,33 @@ func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
 		return nil, nil
 	}
 
-	var data []byte
+	var data asn1.RawValue
 	if rest, err := asn1.Unmarshal(eci.EContent.Bytes, &data); err != nil {
 		return nil, err
 	} else if len(rest) > 0 {
 		return nil, errors.New("unexpected trailing data")
 	}
+	if data.Class != asn1.ClassUniversal || data.Tag != asn1.TagOctetString {
+		return nil, fmt.Errorf("bad data content (class: %d tag: %d)", data.Class, data.Tag)
+	}
 
-	return data, nil
+	// gpgsm does OCTETSTRING(OCTETSTRING(data)) for some reason, so we might have
+	// to unwrap this again. We can detect this because isCompound indicates that
+	// this is a "constructed" value instead of a "primitive" value. Constructed
+	// values are composed of other ASN.1 objects, while primiratye values are
+	// actual data.
+	if data.IsCompound {
+		if rest, err := asn1.Unmarshal(data.Bytes, &data); err != nil {
+			return nil, err
+		} else if len(rest) > 0 {
+			return nil, errors.New("unexpected trailing data")
+		}
+		if data.Class != asn1.ClassUniversal || data.Tag != asn1.TagOctetString {
+			return nil, fmt.Errorf("bad data content (class: %d tag: %d)", data.Class, data.Tag)
+		}
+	}
+
+	return data.Bytes, nil
 }
 
 // Attribute ::= SEQUENCE {
@@ -391,6 +415,9 @@ type SignerInfo struct {
 // FindCertificate finds this SignerInfo's certificate in a slice of
 // certificates.
 func (si SignerInfo) FindCertificate(certs []*x509.Certificate) (*x509.Certificate, error) {
+	if len(certs) == 0 {
+		return nil, errors.New("no certificates")
+	}
 	switch si.Version {
 	case 1: // SID is issuer and serial number
 		isn, err := si.issuerAndSerialNumberSID()
