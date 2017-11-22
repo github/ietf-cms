@@ -210,23 +210,31 @@ func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
 		return nil, fmt.Errorf("bad data content (class: %d tag: %d)", data.Class, data.Tag)
 	}
 
-	// gpgsm does OCTETSTRING(OCTETSTRING(data)) for some reason, so we might have
-	// to unwrap this again. We can detect this because isCompound indicates that
-	// this is a "constructed" value instead of a "primitive" value. Constructed
-	// values are composed of other ASN.1 objects, while primiratye values are
-	// actual data.
+	var dataValue []byte
+
+	// gpgsm uses a constructed OCTET STRING for the data. Constructed, as opposed
+	// to primitive, strings are only allowed in BER encoding. Our ber2der stuff
+	// doesn't handle this, so we do it manually.
 	if data.IsCompound {
-		if rest, err := asn1.Unmarshal(data.Bytes, &data); err != nil {
-			return nil, err
-		} else if len(rest) > 0 {
-			return nil, errors.New("unexpected trailing data")
+		rest := data.Bytes
+		for len(rest) > 0 {
+			var err error
+			if rest, err = asn1.Unmarshal(rest, &data); err != nil {
+				return nil, err
+			}
+
+			// Don't allow further constructed types.
+			if data.Class != asn1.ClassUniversal || data.Tag != asn1.TagOctetString {
+				return nil, fmt.Errorf("bad data content (class: %d tag: %d)", data.Class, data.Tag)
+			}
+
+			dataValue = append(dataValue, data.Bytes...)
 		}
-		if data.Class != asn1.ClassUniversal || data.Tag != asn1.TagOctetString {
-			return nil, fmt.Errorf("bad data content (class: %d tag: %d)", data.Class, data.Tag)
-		}
+	} else {
+		dataValue = data.Bytes
 	}
 
-	return data.Bytes, nil
+	return dataValue, nil
 }
 
 // Attribute ::= SEQUENCE {
@@ -767,9 +775,10 @@ func (sd *SignedData) ContentInfoDER() ([]byte, error) {
 	ci := ContentInfo{
 		ContentType: oidSignedData,
 		Content: asn1.RawValue{
-			Class: asn1.ClassContextSpecific,
-			Tag:   0,
-			Bytes: der,
+			Class:      asn1.ClassContextSpecific,
+			Tag:        0,
+			Bytes:      der,
+			IsCompound: true,
 		},
 	}
 
