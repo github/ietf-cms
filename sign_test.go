@@ -27,7 +27,7 @@ func TestSign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = sd2.Verify(); err != nil {
+	if _, err = sd2.Verify(UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -51,7 +51,7 @@ func TestSignDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = sd2.VerifyDetached(data); err != nil {
+	if _, err = sd2.VerifyDetached(data, UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }

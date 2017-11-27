@@ -14,7 +14,7 @@ func TestVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.Verify(); err != nil {
+	if _, err := sd.Verify(UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -25,7 +25,7 @@ func TestVerifyGPGSMAttached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = sd.Verify(); err != nil {
+	if _, err = sd.Verify(UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 
@@ -44,7 +44,7 @@ func TestVerifyGPGSMDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.VerifyDetached([]byte("hello, world!\n")); err != nil {
+	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -55,7 +55,7 @@ func TestVerifyGPGSMNoCerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.VerifyDetached([]byte("hello, world!\n")); err.Error() != "no certificates" {
+	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err.Error() != "no certificates" {
 		t.Fatal(err)
 	}
 }
@@ -66,7 +66,7 @@ func TestVerifyOpenSSLAttached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.Verify(); err != nil {
+	if _, err := sd.Verify(UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -77,7 +77,7 @@ func TestVerifyOpenSSLDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.VerifyDetached([]byte("hello, world!")); err != nil {
+	if _, err := sd.VerifyDetached([]byte("hello, world!"), UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
