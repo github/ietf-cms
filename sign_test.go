@@ -2,6 +2,7 @@ package cms
 
 import (
 	"crypto/ecdsa"
+	"crypto/x509"
 	"testing"
 
 	"golang.org/x/crypto/pkcs12"
@@ -12,10 +13,11 @@ func TestSign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	chain := []*x509.Certificate{cert}
 
 	data := []byte("hello, world!")
 
-	ci, err := Sign(data, cert, priv.(*ecdsa.PrivateKey))
+	ci, err := Sign(data, chain, priv.(*ecdsa.PrivateKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,10 +37,11 @@ func TestSignDetached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	chain := []*x509.Certificate{cert}
 
 	data := []byte("hello, world!")
 
-	ci, err := SignDetached(data, cert, priv.(*ecdsa.PrivateKey))
+	ci, err := SignDetached(data, chain, priv.(*ecdsa.PrivateKey))
 	if err != nil {
 		t.Fatal(err)
 	}

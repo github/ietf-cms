@@ -623,7 +623,32 @@ func NewSignedData(data []byte) (*SignedData, error) {
 }
 
 // AddSignerInfo adds a SignerInfo to the SignedData.
-func (sd *SignedData) AddSignerInfo(cert *x509.Certificate, signer crypto.Signer) error {
+func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Signer) error {
+	// figure out which certificate is associated with signer.
+	pub, err := x509.MarshalPKIXPublicKey(signer.Public())
+	if err != nil {
+		return err
+	}
+
+	var cert *x509.Certificate
+	for _, c := range chain {
+		if err := sd.addCertificate(c); err != nil {
+			return err
+		}
+
+		certPub, err := x509.MarshalPKIXPublicKey(c.PublicKey)
+		if err != nil {
+			return err
+		}
+
+		if bytes.Equal(pub, certPub) {
+			cert = c
+		}
+	}
+	if cert == nil {
+		return errors.New("No certificate matching signer's public key")
+	}
+
 	sid, err := NewIssuerAndSerialNumber(cert)
 	if err != nil {
 		return err
@@ -692,10 +717,6 @@ func (sd *SignedData) AddSignerInfo(cert *x509.Certificate, signer crypto.Signer
 		return errr
 	}
 	if si.Signature, err = signer.Sign(rand.Reader, smd.Sum(nil), hash); err != nil {
-		return err
-	}
-
-	if err := sd.addCertificate(cert); err != nil {
 		return err
 	}
 
