@@ -53,6 +53,10 @@ func (sd *SignedData) verify(message []byte, roots *x509.CertPool) ([]*x509.Cert
 	verifyOpts := x509.VerifyOptions{
 		Intermediates: x509.NewCertPool(),
 		Roots:         roots,
+		KeyUsages: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageEmailProtection,
+			x509.ExtKeyUsageCodeSigning,
+		},
 	}
 
 	for _, cert := range certs {
