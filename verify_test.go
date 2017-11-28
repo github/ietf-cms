@@ -2,6 +2,7 @@ package cms
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/base64"
 	"io"
 	"strings"
@@ -79,6 +80,35 @@ func TestVerifyOpenSSLDetached(t *testing.T) {
 
 	if _, err := sd.VerifyDetached([]byte("hello, world!"), UnsafeNoVerify); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVerifyChain(t *testing.T) {
+	ber, _ := Sign([]byte("hi"), leaf.Chain(), leaf.PrivateKey)
+	sd, _ := ParseSignedData(ber)
+
+	// good root
+	certs, err := sd.Verify(root.ChainPool())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !certs[0].Equal(leaf.Certificate) {
+		t.Fatal("bad cert")
+	}
+
+	// bad root
+	if _, err = sd.Verify(otherRoot.ChainPool()); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// system root
+	if _, err = sd.Verify(nil); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// no root
+	if _, err = sd.Verify(x509.NewCertPool()); err == nil {
+		t.Fatal("expected error")
 	}
 }
 
