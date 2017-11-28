@@ -2,6 +2,7 @@ package cms
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/base64"
 	"io"
 	"strings"
@@ -14,7 +15,7 @@ func TestVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.Verify(); err != nil {
+	if _, err := sd.Verify(UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -25,7 +26,7 @@ func TestVerifyGPGSMAttached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = sd.Verify(); err != nil {
+	if _, err = sd.Verify(UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 
@@ -44,7 +45,7 @@ func TestVerifyGPGSMDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.VerifyDetached([]byte("hello, world!\n")); err != nil {
+	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -55,7 +56,7 @@ func TestVerifyGPGSMNoCerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.VerifyDetached([]byte("hello, world!\n")); err.Error() != "no certificates" {
+	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err.Error() != "no certificates" {
 		t.Fatal(err)
 	}
 }
@@ -66,7 +67,7 @@ func TestVerifyOpenSSLAttached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.Verify(); err != nil {
+	if _, err := sd.Verify(UnsafeNoVerify); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -77,8 +78,37 @@ func TestVerifyOpenSSLDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sd.VerifyDetached([]byte("hello, world!")); err != nil {
+	if _, err := sd.VerifyDetached([]byte("hello, world!"), UnsafeNoVerify); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVerifyChain(t *testing.T) {
+	ber, _ := Sign([]byte("hi"), leaf.Chain(), leaf.PrivateKey)
+	sd, _ := ParseSignedData(ber)
+
+	// good root
+	certs, err := sd.Verify(root.ChainPool())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !certs[0].Equal(leaf.Certificate) {
+		t.Fatal("bad cert")
+	}
+
+	// bad root
+	if _, err = sd.Verify(otherRoot.ChainPool()); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// system root
+	if _, err = sd.Verify(nil); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// no root
+	if _, err = sd.Verify(x509.NewCertPool()); err == nil {
+		t.Fatal("expected error")
 	}
 }
 

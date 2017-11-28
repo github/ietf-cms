@@ -5,15 +5,17 @@ import (
 	"crypto/x509"
 )
 
-// Sign creates a CMS SignedData from the content and signs it with the
-// certificate and signer. The DER encoded CMS message is returned.
-func Sign(data []byte, cert *x509.Certificate, signer crypto.Signer) ([]byte, error) {
+// Sign creates a CMS SignedData from the content and signs it with signer. At
+// minimum, chain must contain the leaf certificate associated with the signer.
+// Any additional intermediates will also be added to the SignedData. The DER
+// encoded CMS message is returned.
+func Sign(data []byte, chain []*x509.Certificate, signer crypto.Signer) ([]byte, error) {
 	sd, err := NewSignedData(data)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = sd.Sign(cert, signer); err != nil {
+	if err = sd.Sign(chain, signer); err != nil {
 		return nil, err
 	}
 
@@ -21,14 +23,16 @@ func Sign(data []byte, cert *x509.Certificate, signer crypto.Signer) ([]byte, er
 }
 
 // SignDetached creates a detached CMS SignedData from the content and signs it
-// with the certificate and signer. The DER encoded CMS message is returned.
-func SignDetached(data []byte, cert *x509.Certificate, signer crypto.Signer) ([]byte, error) {
+// with signer. At minimum, chain must contain the leaf certificate associated
+// with the signer. Any additional intermediates will also be added to the
+// SignedData. The DER encoded CMS message is returned.
+func SignDetached(data []byte, chain []*x509.Certificate, signer crypto.Signer) ([]byte, error) {
 	sd, err := NewSignedData(data)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = sd.Sign(cert, signer); err != nil {
+	if err = sd.Sign(chain, signer); err != nil {
 		return nil, err
 	}
 
@@ -37,7 +41,9 @@ func SignDetached(data []byte, cert *x509.Certificate, signer crypto.Signer) ([]
 	return sd.ToDER()
 }
 
-// Sign adds a signature to the SignedData.
-func (sd *SignedData) Sign(cert *x509.Certificate, signer crypto.Signer) error {
-	return sd.psd.AddSignerInfo(cert, signer)
+// Sign adds a signature to the SignedData.At minimum, chain must contain the
+// leaf certificate associated with the signer. Any additional intermediates
+// will also be added to the SignedData.
+func (sd *SignedData) Sign(chain []*x509.Certificate, signer crypto.Signer) error {
+	return sd.psd.AddSignerInfo(chain, signer)
 }
