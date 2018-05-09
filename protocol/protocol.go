@@ -36,6 +36,7 @@ var (
 	// Content type OIDs
 	oidData       = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 1}
 	oidSignedData = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 2}
+	oidTSTInfo    = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 16, 1, 4}
 
 	// Attribute OIDs
 	oidAttributeContentType   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 3}
@@ -169,10 +170,26 @@ type EncapsulatedContentInfo struct {
 // NewDataEncapsulatedContentInfo creates a new EncapsulatedContentInfo of type
 // id-data.
 func NewDataEncapsulatedContentInfo(data []byte) (EncapsulatedContentInfo, error) {
-	octetString, err := asn1.Marshal(asn1.RawValue{
+	return NewEncapsulatedContentInfo(data, oidData)
+}
+
+// NewTSTInfoEncapsulatedContentInfo creates a new EncapsulatedContentInfo of
+// type id-ct-TSTInfo.
+func NewTSTInfoEncapsulatedContentInfo(tsti *TSTInfo) (EncapsulatedContentInfo, error) {
+	content, err := asn1.Marshal(tsti)
+	if err != nil {
+		return EncapsulatedContentInfo{}, err
+	}
+
+	return NewEncapsulatedContentInfo(content, oidTSTInfo)
+}
+
+// NewEncapsulatedContentInfo creates a new EncapsulatedContentInfo.
+func NewEncapsulatedContentInfo(content []byte, contentType asn1.ObjectIdentifier) (EncapsulatedContentInfo, error) {
+	octets, err := asn1.Marshal(asn1.RawValue{
 		Class:      asn1.ClassUniversal,
 		Tag:        asn1.TagOctetString,
-		Bytes:      data,
+		Bytes:      content,
 		IsCompound: false,
 	})
 	if err != nil {
@@ -180,61 +197,108 @@ func NewDataEncapsulatedContentInfo(data []byte) (EncapsulatedContentInfo, error
 	}
 
 	return EncapsulatedContentInfo{
-		EContentType: oidData,
+		EContentType: contentType,
 		EContent: asn1.RawValue{
 			Class:      asn1.ClassContextSpecific,
 			Tag:        0,
-			Bytes:      octetString,
+			Bytes:      octets,
 			IsCompound: true,
 		},
 	}, nil
 }
 
-// DataEContent gets the EContent assuming EContentType is data. A nil byte
-// slice is returned if the OPTIONAL eContent field is missing.
-func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
-	if !eci.EContentType.Equal(oidData) {
-		return nil, ErrWrongType
-	}
+// EContentValue gets the OCTET STRING EContent value without tag or length.
+// This is what the message digest is calculated over. A nil byte slice is
+// returned if the OPTIONAL eContent field is missing.
+func (eci EncapsulatedContentInfo) EContentValue() ([]byte, error) {
 	if eci.EContent.Bytes == nil {
 		return nil, nil
 	}
 
-	var data asn1.RawValue
-	if rest, err := asn1.Unmarshal(eci.EContent.Bytes, &data); err != nil {
+	// The EContent is an `[0] EXPLICIT OCTET STRING`. EXPLICIT means that there
+	// is another whole tag wrapping the OCTET STRING. When we decoded the
+	// EContent into a asn1.RawValue we're just getting that outer tag, so the
+	// EContent.Bytes is the encoded OCTET STRING, which is what we really want
+	// the value of.
+	var octets asn1.RawValue
+	if rest, err := asn1.Unmarshal(eci.EContent.Bytes, &octets); err != nil {
 		return nil, err
 	} else if len(rest) > 0 {
 		return nil, errors.New("unexpected trailing data")
 	}
-	if data.Class != asn1.ClassUniversal || data.Tag != asn1.TagOctetString {
-		return nil, fmt.Errorf("bad data content (class: %d tag: %d)", data.Class, data.Tag)
+	if octets.Class != asn1.ClassUniversal || octets.Tag != asn1.TagOctetString {
+		return nil, fmt.Errorf("bad data content (class: %d tag: %d)", octets.Class, octets.Tag)
 	}
 
-	var dataValue []byte
-
-	// gpgsm uses a constructed OCTET STRING for the data. Constructed, as opposed
-	// to primitive, strings are only allowed in BER encoding. Our ber2der stuff
-	// doesn't handle this, so we do it manually.
-	if data.IsCompound {
-		rest := data.Bytes
+	// While we already tried converting BER to DER, we didn't take constructed
+	// types into account. Constructed string types, as opposed to primitive
+	// types, can encode indefinite length strings by including a bunch of
+	// sub-strings that are joined together to get the actual value. Gpgsm uses
+	// a constructed OCTET STRING for the EContent, so we have to manually decode
+	// it here.
+	var value []byte
+	if octets.IsCompound {
+		rest := octets.Bytes
 		for len(rest) > 0 {
 			var err error
-			if rest, err = asn1.Unmarshal(rest, &data); err != nil {
+			if rest, err = asn1.Unmarshal(rest, &octets); err != nil {
 				return nil, err
 			}
 
 			// Don't allow further constructed types.
-			if data.Class != asn1.ClassUniversal || data.Tag != asn1.TagOctetString {
-				return nil, fmt.Errorf("bad data content (class: %d tag: %d)", data.Class, data.Tag)
+			if octets.Class != asn1.ClassUniversal || octets.Tag != asn1.TagOctetString || octets.IsCompound {
+				return nil, fmt.Errorf("bad data content (class: %d tag: %d)", octets.Class, octets.Tag)
 			}
 
-			dataValue = append(dataValue, data.Bytes...)
+			value = append(value, octets.Bytes...)
 		}
 	} else {
-		dataValue = data.Bytes
+		value = octets.Bytes
 	}
 
-	return dataValue, nil
+	return value, nil
+}
+
+// IsTypeData checks if the EContentType is id-data.
+func (eci EncapsulatedContentInfo) IsTypeData() bool {
+	return eci.EContentType.Equal(oidData)
+}
+
+// DataEContent gets the EContent assuming EContentType is data.
+func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
+	if !eci.IsTypeData() {
+		return nil, ErrWrongType
+	}
+	return eci.EContentValue()
+}
+
+// IsTypeTSTInfo checks if the EContentType is id-ct-TSTInfo.
+func (eci EncapsulatedContentInfo) IsTypeTSTInfo() bool {
+	return eci.EContentType.Equal(oidTSTInfo)
+}
+
+// TSTInfoEContent gets the EContent assuming EContentType is TSTInfo (RFC3161).
+func (eci EncapsulatedContentInfo) TSTInfoEContent() (*TSTInfo, error) {
+	if !eci.EContentType.Equal(oidTSTInfo) {
+		return nil, ErrWrongType
+	}
+
+	ecval, err := eci.EContentValue()
+	if err != nil {
+		return nil, err
+	}
+	if ecval == nil {
+		return nil, errors.New("missing EContent for non data type")
+	}
+
+	tsti := TSTInfo{}
+	if rest, err := asn1.Unmarshal(ecval, &tsti); err != nil {
+		return nil, err
+	} else if len(rest) > 0 {
+		return nil, errors.New("unexpected trailing data")
+	}
+
+	return &tsti, nil
 }
 
 // Attribute ::= SEQUENCE {
@@ -486,8 +550,17 @@ func (si SignerInfo) subjectKeyIdentifierSID() ([]byte, error) {
 
 // Hash gets the crypto.Hash associated with this SignerInfo's DigestAlgorithm.
 // 0 is returned for unrecognized algorithms.
-func (si SignerInfo) Hash() crypto.Hash {
-	return digestAlgorithmToHash[si.DigestAlgorithm.Algorithm.String()]
+func (si SignerInfo) Hash() (crypto.Hash, error) {
+	algo := si.DigestAlgorithm.Algorithm.String()
+	hash := digestAlgorithmToHash[algo]
+	if hash == 0 {
+		return 0, fmt.Errorf("unknown digest algorithm: %s", algo)
+	}
+	if !hash.Available() {
+		return 0, fmt.Errorf("Hash not avaialbe: %s", algo)
+	}
+
+	return hash, nil
 }
 
 // X509SignatureAlgorithm gets the x509.SignatureAlgorithm that should be used
@@ -608,14 +681,16 @@ type SignedData struct {
 }
 
 // NewSignedData creates a new SignedData.
-func NewSignedData(data []byte) (*SignedData, error) {
-	eci, err := NewDataEncapsulatedContentInfo(data)
-	if err != nil {
-		return nil, err
+func NewSignedData(eci EncapsulatedContentInfo) (*SignedData, error) {
+	// The version is picked based on which CMS features are used. We only use
+	// version 1 features, except for supporting non-data econtent.
+	version := 1
+	if !eci.IsTypeData() {
+		version = 3
 	}
 
 	return &SignedData{
-		Version:          1,
+		Version:          version,
 		DigestAlgorithms: []pkix.AlgorithmIdentifier{},
 		EncapContentInfo: eci,
 		SignerInfos:      []SignerInfo{},
@@ -630,14 +705,17 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 		return err
 	}
 
-	var cert *x509.Certificate
+	var (
+		cert    *x509.Certificate
+		certPub []byte
+	)
+
 	for _, c := range chain {
-		if err := sd.addCertificate(c); err != nil {
+		if err = sd.addCertificate(c); err != nil {
 			return err
 		}
 
-		certPub, err := x509.MarshalPKIXPublicKey(c.PublicKey)
-		if err != nil {
+		if certPub, err = x509.MarshalPKIXPublicKey(c.PublicKey); err != nil {
 			return err
 		}
 
@@ -675,24 +753,22 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 	}
 
 	// Get the message
-	data, err := sd.EncapContentInfo.DataEContent()
+	content, err := sd.EncapContentInfo.EContentValue()
 	if err != nil {
 		return err
 	}
-	if data == nil {
+	if content == nil {
 		return errors.New("already detached")
 	}
 
 	// Digest the message.
-	hash := si.Hash()
-	if hash == 0 {
-		return fmt.Errorf("unknown digest algorithm: %s", digestAlgorithm.String())
-	}
-	if !hash.Available() {
-		return fmt.Errorf("Hash not avaialbe: %s", digestAlgorithm.String())
+	hash, err := si.Hash()
+	if err != nil {
+		return err
 	}
 	md := hash.New()
-	if _, err = md.Write(data); err != nil {
+	// TEST
+	if _, err = md.Write(content); err != nil {
 		return err
 	}
 

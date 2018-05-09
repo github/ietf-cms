@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
-	"fmt"
 )
 
 // UnsafeNoVerify instructs Verify and VerifyDetached not to verify signature's
@@ -17,20 +16,20 @@ var UnsafeNoVerify = &x509.CertPool{}
 // The certificates whose keys made the signatures are returned regardless of
 // success.
 func (sd *SignedData) Verify(roots *x509.CertPool) ([]*x509.Certificate, error) {
-	data, err := sd.psd.EncapContentInfo.DataEContent()
+	econtent, err := sd.psd.EncapContentInfo.EContentValue()
 	if err != nil {
 		return nil, err
 	}
-	if data == nil {
+	if econtent == nil {
 		return nil, errors.New("detached signature")
 	}
 
-	return sd.verify(data, roots)
+	return sd.verify(econtent, roots)
 }
 
 // VerifyDetached verifies the SingerInfos' detached signatures over the
-// provided message. Each signature's associated certificate is verified using
-// the provided roots. UnsafeNoVerify may be specified to skip this
+// provided data message. Each signature's associated certificate is verified
+// using the provided roots. UnsafeNoVerify may be specified to skip this
 // verification. Nil may be provided to use system roots. The certificates whose
 // keys made the signatures are returned regardless of success.
 func (sd *SignedData) VerifyDetached(message []byte, roots *x509.CertPool) ([]*x509.Certificate, error) {
@@ -41,7 +40,7 @@ func (sd *SignedData) VerifyDetached(message []byte, roots *x509.CertPool) ([]*x
 	return sd.verify(message, roots)
 }
 
-func (sd *SignedData) verify(message []byte, roots *x509.CertPool) ([]*x509.Certificate, error) {
+func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Certificate, error) {
 	if len(sd.psd.SignerInfos) == 0 {
 		return nil, errors.New("no signatures found")
 	}
@@ -78,15 +77,15 @@ func (sd *SignedData) verify(message []byte, roots *x509.CertPool) ([]*x509.Cert
 
 		// SignedAttrs is optional if EncapContentInfo eContentType isn't id-data.
 		if si.SignedAttrs == nil {
-			// If SignedAttrs is absent, validate that EncapContentInfo eContentType
-			// is id-data.
-			if _, err := sd.psd.EncapContentInfo.DataEContent(); err != nil {
-				return nil, err
+			// SignedAttrs may only be absent if EncapContentInfo eContentType is
+			// id-data.
+			if !sd.psd.EncapContentInfo.IsTypeData() {
+				return nil, errors.New("missing SignedAttrs")
 			}
 
-			// If SignedAttrs is absent, the signature is over the original message
-			// itself.
-			signedMessage = message
+			// If SignedAttrs is absent, the signature is over the original
+			// encapsulated content itself.
+			signedMessage = econtent
 		} else {
 			// If SignedAttrs is present, we validate the mandatory ContentType and
 			// MessageDigest attributes.
@@ -94,21 +93,17 @@ func (sd *SignedData) verify(message []byte, roots *x509.CertPool) ([]*x509.Cert
 			if err != nil {
 				return nil, err
 			}
-
 			if !siContentType.Equal(sd.psd.EncapContentInfo.EContentType) {
 				return nil, errors.New("invalid SignerInfo ContentType attribute")
 			}
 
 			// Calculate the digest over the actual message.
-			hash := si.Hash()
-			if hash == 0 {
-				return nil, fmt.Errorf("unknown digest algorithm: %s", si.DigestAlgorithm.Algorithm.String())
-			}
-			if !hash.Available() {
-				return nil, fmt.Errorf("Hash not avaialbe: %s", si.DigestAlgorithm.Algorithm.String())
+			hash, err := si.Hash()
+			if err != nil {
+				return nil, err
 			}
 			actualMessageDigest := hash.New()
-			if _, err = actualMessageDigest.Write(message); err != nil {
+			if _, err = actualMessageDigest.Write(econtent); err != nil {
 				return nil, err
 			}
 
