@@ -66,6 +66,15 @@ var (
 		oidDigestAlgorithmSHA512.String(): crypto.SHA512,
 	}
 
+	// hashToDigestAlgorithm maps crypto.Hash values to digest OIDs.
+	hashToDigestAlgorithm = map[crypto.Hash]asn1.ObjectIdentifier{
+		crypto.SHA1:   oidDigestAlgorithmSHA1,
+		crypto.MD5:    oidDigestAlgorithmMD5,
+		crypto.SHA256: oidDigestAlgorithmSHA256,
+		crypto.SHA384: oidDigestAlgorithmSHA384,
+		crypto.SHA512: oidDigestAlgorithmSHA512,
+	}
+
 	// signatureAlgorithmToDigestAlgorithm maps x509.SignatureAlgorithm to
 	// digestAlgorithm OIDs.
 	signatureAlgorithmToDigestAlgorithm = map[x509.SignatureAlgorithm]asn1.ObjectIdentifier{
