@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -44,6 +45,120 @@ func (tsr *TimeStampReq) GenerateNonce() {
 	}
 
 	tsr.Nonce.SetBytes(buf[:])
+}
+
+// TimeStampResp ::= SEQUENCE  {
+// 	status                  PKIStatusInfo,
+// 	timeStampToken          TimeStampToken     OPTIONAL  }
+//
+// TimeStampToken ::= ContentInfo
+type TimeStampResp struct {
+	Status         PKIStatusInfo
+	TimeStampToken ContentInfo `asn1:"optional"`
+}
+
+// ParseTimeStampResp parses a BER encoded TimeStampResp.
+func ParseTimeStampResp(ber []byte) (TimeStampResp, error) {
+	var resp TimeStampResp
+
+	der, err := ber2der(ber)
+	if err != nil {
+		return resp, err
+	}
+
+	rest, err := asn1.Unmarshal(der, &resp)
+	if err != nil {
+		return resp, err
+	}
+	if len(rest) > 0 {
+		return resp, errors.New("unexpected trailing data")
+	}
+
+	return resp, nil
+}
+
+// PKIStatusInfo ::= SEQUENCE {
+// 	status        PKIStatus,
+// 	statusString  PKIFreeText     OPTIONAL,
+// 	failInfo      PKIFailureInfo  OPTIONAL  }
+//
+// PKIStatus ::= INTEGER {
+// 	granted                (0),
+// 		-- when the PKIStatus contains the value zero a TimeStampToken, as
+// 		requested, is present.
+// 	grantedWithMods        (1),
+// 		-- when the PKIStatus contains the value one a TimeStampToken,
+// 		with modifications, is present.
+// 	rejection              (2),
+// 	waiting                (3),
+// 	revocationWarning      (4),
+// 		-- this message contains a warning that a revocation is
+// 		-- imminent
+// 	revocationNotification (5)
+// 		-- notification that a revocation has occurred   }
+//
+// -- When the TimeStampToken is not present
+// -- failInfo indicates the reason why the
+// -- time-stamp request was rejected and
+// -- may be one of the following values.
+//
+// PKIFailureInfo ::= BIT STRING {
+// 	badAlg               (0),
+// 		-- unrecognized or unsupported Algorithm Identifier
+// 	badRequest           (2),
+// 		-- transaction not permitted or supported
+// 	badDataFormat        (5),
+// 		-- the data submitted has the wrong format
+// 	timeNotAvailable    (14),
+// 		-- the TSA's time source is not available
+// 	unacceptedPolicy    (15),
+// 		-- the requested TSA policy is not supported by the TSA.
+// 	unacceptedExtension (16),
+// 		-- the requested extension is not supported by the TSA.
+// 	addInfoNotAvailable (17)
+// 		-- the additional information requested could not be understood
+// 		-- or is not available
+// 	systemFailure       (25)
+// 		-- the request cannot be handled due to system failure  }
+type PKIStatusInfo struct {
+	Status       int
+	StatusString PKIFreeText    `asn1:"optional"`
+	FailInfo     asn1.BitString `asn1:"optional"`
+}
+
+// PKIFreeText ::= SEQUENCE SIZE (1..MAX) OF UTF8String
+type PKIFreeText []asn1.RawValue
+
+// NewPKIFreeText creates a new PKIFreeText from a []string.
+func NewPKIFreeText(txts []string) (PKIFreeText, error) {
+	rvs := make([]asn1.RawValue, len(txts))
+
+	for i := range txts {
+		der, err := asn1.MarshalWithParams(txts[i], "utf8")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := asn1.Unmarshal(der, &rvs[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	return PKIFreeText(rvs), nil
+}
+
+// Strings decodes the PKIFreeText into a []string.
+func (ft PKIFreeText) Strings() ([]string, error) {
+	strs := make([]string, len(ft))
+
+	for i := range ft {
+		if rest, err := asn1.UnmarshalWithParams(ft[i].FullBytes, &strs[i], "utf8"); err != nil {
+			return nil, err
+		} else if len(rest) != 0 {
+			return nil, errors.New("unexpected trailing data")
+		}
+	}
+
+	return strs, nil
 }
 
 // TSTInfo ::= SEQUENCE  {

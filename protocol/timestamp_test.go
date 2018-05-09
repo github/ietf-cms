@@ -57,7 +57,7 @@ func TestMessageImprint(t *testing.T) {
 
 	// null value for hash alrogithm parameters (as opposed to being absent entirely)
 	mi2, _ = NewMessageImprint(crypto.SHA256, bytes.NewReader(m))
-	mi2.HashAlgorithm.Parameters = asn1.NullRawValue
+	mi2.HashAlgorithm.Parameters = asn1.RawValue{Tag: 5} // go1.10 has asn1.NullRawValue
 	if !mi1.Equal(mi2) {
 		t.Fatal("expected m1==m2")
 	}
@@ -88,10 +88,96 @@ func TestMessageImprint(t *testing.T) {
 	}
 }
 
+func TestErrorTimeStampResp(t *testing.T) {
+	// Error response from request with missing message digest.
+	respDER, _ := ber2der(mustBase64Decode("MDQwMgIBAjApDCd0aGUgZGF0YSBzdWJtaXR0ZWQgaGFzIHRoZSB3cm9uZyBmb3JtYXQDAgIE"))
+	resp, err := ParseTimeStampResp(respDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := asn1.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(respDER, rt) {
+		t.Fatal("expected round-tripping error TimeStampResp to equal")
+	}
+
+	expectedStatus := 2
+	if resp.Status.Status != expectedStatus {
+		t.Fatalf("expected status %d, got %d", expectedStatus, resp.Status.Status)
+	}
+
+	if numStrings := len(resp.Status.StatusString); numStrings != 1 {
+		t.Fatalf("expected single status string, got %d", numStrings)
+	}
+
+	expectedString := "the data submitted has the wrong format"
+	actualStrings, err := resp.Status.StatusString.Strings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actualStrings[0] != expectedString {
+		t.Fatalf("expected status string %s, got %s", expectedString, actualStrings[0])
+	}
+
+	expectedFailInfoLen := 6
+	if resp.Status.FailInfo.BitLength != expectedFailInfoLen {
+		t.Fatalf("expected len(failinfo) %d, got %d", expectedFailInfoLen, resp.Status.FailInfo.BitLength)
+	}
+
+	expectedFailInfo := []int{0, 0, 0, 0, 0, 1}
+	for i, v := range expectedFailInfo {
+		if actual := resp.Status.FailInfo.At(i); actual != v {
+			t.Fatalf("expected failinfo[%d] to be %d, got %d", i, v, actual)
+		}
+	}
+}
+
+func TestPKIFreeText(t *testing.T) {
+	der := mustBase64Decode("MBUME0JhZCBtZXNzYWdlIGRpZ2VzdC4=")
+	var ft PKIFreeText
+	if _, err := asn1.Unmarshal(der, &ft); err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := asn1.Marshal(ft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(der, rt) {
+		t.Fatal("expected round-tripped PKIFreeText to match")
+	}
+
+	ft, err = NewPKIFreeText([]string{"Bad message digest."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, err = asn1.Marshal(ft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(der, rt) {
+		t.Fatal("expected newly made PKIFreeText to match original DER")
+	}
+}
+
 func TestTSTInfo(t *testing.T) {
-	ci, _ := ParseContentInfo(fixtureTimestampSymantecWithCerts)
-	sd, _ := ci.SignedDataContent()
-	tsti, _ := sd.EncapContentInfo.TSTInfoEContent()
+	tsr, err := ParseTimeStampResp(fixtureTimestampSymantecWithCerts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sd, err := tsr.TimeStampToken.SignedDataContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tsti, err := sd.EncapContentInfo.TSTInfoEContent()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	expectedVersion := 1
 	if tsti.Version != expectedVersion {

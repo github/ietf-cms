@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
-	"errors"
 	"io"
 	"math/big"
 	"strings"
@@ -262,23 +261,23 @@ func TestParseSignautreOutlookDetached(t *testing.T) {
 }
 
 func TestParseTimestampSymantec(t *testing.T) {
-	testParseContentInfo(t, fixtureTimestampSymantec)
+	testParseContentInfo(t, mustExtractTimeStampToken(fixtureTimestampSymantec))
 }
 
 func TestParseTimestampSymantecWithCerts(t *testing.T) {
-	testParseContentInfo(t, fixtureTimestampSymantecWithCerts)
+	testParseContentInfo(t, mustExtractTimeStampToken(fixtureTimestampSymantecWithCerts))
 }
 
 func TestParseTimestampDigicert(t *testing.T) {
-	testParseContentInfo(t, fixtureTimestampDigicert)
+	testParseContentInfo(t, mustExtractTimeStampToken(fixtureTimestampDigicert))
 }
 
 func TestParseTimestampComodo(t *testing.T) {
-	testParseContentInfo(t, fixtureTimestampComodo)
+	testParseContentInfo(t, mustExtractTimeStampToken(fixtureTimestampComodo))
 }
 
 func TestParseTimestampGlobalSign(t *testing.T) {
-	testParseContentInfo(t, fixtureTimestampGlobalSign)
+	testParseContentInfo(t, mustExtractTimeStampToken(fixtureTimestampGlobalSign))
 }
 
 func testParseContentInfo(t *testing.T, ber []byte) {
@@ -676,7 +675,7 @@ var fixturePFX = mustBase64Decode("" +
 	"AwIaBQAEFDPX7JM9l8ZnTwGGaDQQvlp7RiBKBAg2WsoFwawSzwICCAA=",
 )
 
-var fixtureTimestampSymantec = mustDecodeTimestampResponse("" +
+var fixtureTimestampSymantec = mustBase64Decode("" +
 	"MIIDnjADAgEAMIIDlQYJKoZIhvcNAQcCoIIDhjCCA4ICAQMxDTALBglghkgBZQMEAgEwggEOBgsqhkiG" +
 	"9w0BCRABBKCB/gSB+zCB+AIBAQYLYIZIAYb4RQEHFwMwMTANBglghkgBZQMEAgEFAAQgWJG1tSLV3wht" +
 	"D/CxEPvZ0hu0/HFjrzTQgoai6Eb2vgMCFHERZNISITpb8tPCqDQtcNGcWhhSGA8yMDE4MDUwOTE0NTQy" +
@@ -695,7 +694,7 @@ var fixtureTimestampSymantec = mustDecodeTimestampResponse("" +
 	"EbbTXfP8KuOwEyUwbFbRCXqO+Z6Gg0RqpiAZWCSM",
 )
 
-var fixtureTimestampSymantecWithCerts = mustDecodeTimestampResponse("" +
+var fixtureTimestampSymantecWithCerts = mustBase64Decode("" +
 	"MIIOLTADAgEAMIIOJAYJKoZIhvcNAQcCoIIOFTCCDhECAQMxDTALBglghkgBZQMEAgEwggEOBgsqhkiG" +
 	"9w0BCRABBKCB/gSB+zCB+AIBAQYLYIZIAYb4RQEHFwMwMTANBglghkgBZQMEAgEFAAQgWJG1tSLV3wht" +
 	"D/CxEPvZ0hu0/HFjrzTQgoai6Eb2vgMCFDSZty7Ob7ZraC01Jcblagd3PcnYGA8yMDE4MDUwOTE4MjUy" +
@@ -759,7 +758,7 @@ var fixtureTimestampSymantecWithCerts = mustDecodeTimestampResponse("" +
 	"wc6JJCugxm8Ba1a6nDAAAQYf/pQyBRRlh/qCHZ0rIoFq",
 )
 
-var fixtureTimestampDigicert = mustDecodeTimestampResponse("" +
+var fixtureTimestampDigicert = mustBase64Decode("" +
 	"MIIOuTADAgEAMIIOsAYJKoZIhvcNAQcCoIIOoTCCDp0CAQMxDzANBglghkgBZQMEAgEFADB3BgsqhkiG" +
 	"9w0BCRABBKBoBGYwZAIBAQYJYIZIAYb9bAcBMDEwDQYJYIZIAWUDBAIBBQAEIFiRtbUi1d8IbQ/wsRD7" +
 	"2dIbtPxxY6800IKGouhG9r4DAhAvZIfDsFuq0GRqVn9Wu2I8GA8yMDE4MDUwOTE4NDgxOFqgggu7MIIG" +
@@ -825,7 +824,7 @@ var fixtureTimestampDigicert = mustDecodeTimestampResponse("" +
 	"OES5LDDTx/Qvhet0PjJv70Z7kKgMmAA0BMTRuTnGfiVfEoFm2bzoKmwprU38EPz+PVnrbUA=",
 )
 
-var fixtureTimestampComodo = mustDecodeTimestampResponse("" +
+var fixtureTimestampComodo = mustBase64Decode("" +
 	"MIIDuDADAgEAMIIDrwYJKoZIhvcNAQcCoIIDoDCCA5wCAQMxDzANBglghkgBZQMEAgEFADCCAQ8GCyqG" +
 	"SIb3DQEJEAEEoIH/BIH8MIH5AgEBBgorBgEEAbIxAgEBMDEwDQYJYIZIAWUDBAIBBQAEIFiRtbUi1d8I" +
 	"bQ/wsRD72dIbtPxxY6800IKGouhG9r4DAhUA4Fc3zQPRFgrg3c8/sksclhBco7QYDzIwMTgwNTA5MTg0" +
@@ -844,7 +843,7 @@ var fixtureTimestampComodo = mustDecodeTimestampResponse("" +
 	"na2g8ESpdWHRMqG3+8ehvgMwljUnhj5+iYT1YF7Rm6KcV2TCIh6QyokN42ji4BMqTlBA7vzSx5A=",
 )
 
-var fixtureTimestampGlobalSign = mustDecodeTimestampResponse("" +
+var fixtureTimestampGlobalSign = mustBase64Decode("" +
 	"MIIDoTADAgEAMIIDmAYJKoZIhvcNAQcCoIIDiTCCA4UCAQMxCzAJBgUrDgMCGgUAMIHdBgsqhkiG9w0B" +
 	"CRABBKCBzQSByjCBxwIBAQYJKwYBBAGgMgICMDEwDQYJYIZIAWUDBAIBBQAEIFiRtbUi1d8IbQ/wsRD7" +
 	"2dIbtPxxY6800IKGouhG9r4DAhRYZmxGjSg8ojY0mWZG3dUdVW0mAxgPMjAxODA1MDkxODQ2MjRaoF2k" +
@@ -874,27 +873,18 @@ func mustBase64Decode(b64 string) []byte {
 	return buf.Bytes()
 }
 
-// our timestamp fixtures are complete RFC3161 response SEQUENCEs. The first
-// element is a status and the second is the timestamp token that we really care
-// about.
-func mustDecodeTimestampResponse(b64 string) []byte {
-	ber := mustBase64Decode(b64)
-
-	der, err := ber2der(ber)
+// The fixtures above are complete TimeStampResp's, but most of our tests only
+// care about the TimeStampToken (CMS ContentInfo) part of it.
+func mustExtractTimeStampToken(ber []byte) []byte {
+	resp, err := ParseTimeStampResp(ber)
 	if err != nil {
 		panic(err)
 	}
 
-	resp := struct {
-		Status asn1.RawValue
-		Token  asn1.RawValue `asn1:"optional"`
-	}{}
-
-	if rest, err := asn1.Unmarshal(der, &resp); err != nil {
+	tstDER, err := asn1.Marshal(resp.TimeStampToken)
+	if err != nil {
 		panic(err)
-	} else if len(rest) > 0 {
-		panic(errors.New("unexpected trailing data"))
 	}
 
-	return resp.Token.FullBytes
+	return tstDER
 }
