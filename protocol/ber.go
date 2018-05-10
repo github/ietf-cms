@@ -8,7 +8,7 @@ import (
 var encodeIndent = 0
 
 type asn1Object interface {
-	EncodeTo(writer *bytes.Buffer) error
+	encodeTo(writer *bytes.Buffer) error
 }
 
 type asn1Structured struct {
@@ -16,12 +16,12 @@ type asn1Structured struct {
 	content  []asn1Object
 }
 
-func (s asn1Structured) EncodeTo(out *bytes.Buffer) error {
+func (s asn1Structured) encodeTo(out *bytes.Buffer) error {
 	//fmt.Printf("%s--> tag: % X\n", strings.Repeat("| ", encodeIndent), s.tagBytes)
 	encodeIndent++
 	inner := new(bytes.Buffer)
 	for _, obj := range s.content {
-		err := obj.EncodeTo(inner)
+		err := obj.encodeTo(inner)
 		if err != nil {
 			return err
 		}
@@ -39,7 +39,7 @@ type asn1Primitive struct {
 	content  []byte
 }
 
-func (p asn1Primitive) EncodeTo(out *bytes.Buffer) error {
+func (p asn1Primitive) encodeTo(out *bytes.Buffer) error {
 	_, err := out.Write(p.tagBytes)
 	if err != nil {
 		return err
@@ -54,7 +54,8 @@ func (p asn1Primitive) EncodeTo(out *bytes.Buffer) error {
 	return nil
 }
 
-func ber2der(ber []byte) ([]byte, error) {
+// BER2DER attempts to convert BER encoded data to DER encoding.
+func BER2DER(ber []byte) ([]byte, error) {
 	if len(ber) == 0 {
 		return nil, errors.New("ber2der: input ber is empty")
 	}
@@ -65,7 +66,7 @@ func ber2der(ber []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	obj.EncodeTo(out)
+	obj.encodeTo(out)
 
 	// if offset < len(ber) {
 	//	return nil, fmt.Errorf("ber2der: Content longer than expected. Got %d, expected %d", offset, len(ber))

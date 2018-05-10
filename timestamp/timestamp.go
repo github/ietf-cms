@@ -1,4 +1,4 @@
-package protocol
+package timestamp
 
 import (
 	"bytes"
@@ -10,21 +10,24 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/mastahyeti/cms/oid"
+	"github.com/mastahyeti/cms/protocol"
 )
 
-// TimeStampReq ::= SEQUENCE  {
-// 	version                      INTEGER  { v1(1) },
-// 	messageImprint               MessageImprint,
-// 		--a hash algorithm OID and the hash value of the data to be
-// 		--time-stamped
-// 	reqPolicy             TSAPolicyId              OPTIONAL,
-// 	nonce                 INTEGER                  OPTIONAL,
-// 	certReq               BOOLEAN                  DEFAULT FALSE,
-// 	extensions            [0] IMPLICIT Extensions  OPTIONAL  }
-type TimeStampReq struct {
+// Request is a TimeStampReq
+// 	TimeStampReq ::= SEQUENCE  {
+// 		version                      INTEGER  { v1(1) },
+// 		messageImprint               MessageImprint,
+// 			--a hash algorithm OID and the hash value of the data to be
+// 			--time-stamped
+// 		reqPolicy             TSAPolicyId              OPTIONAL,
+// 		nonce                 INTEGER                  OPTIONAL,
+// 		certReq               BOOLEAN                  DEFAULT FALSE,
+// 		extensions            [0] IMPLICIT Extensions  OPTIONAL  }
+type Request struct {
 	Version        int
 	MessageImprint MessageImprint
 	ReqPolicy      asn1.ObjectIdentifier `asn1:"optional"`
@@ -36,34 +39,35 @@ type TimeStampReq struct {
 const nonceBytes = 16
 
 // GenerateNonce generates a new nonce for this TSR.
-func (tsr *TimeStampReq) GenerateNonce() {
+func (r *Request) GenerateNonce() {
 	buf := make([]byte, nonceBytes)
 	if _, err := rand.Read(buf); err != nil {
 		panic(err)
 	}
 
-	if tsr.Nonce == nil {
-		tsr.Nonce = new(big.Int)
+	if r.Nonce == nil {
+		r.Nonce = new(big.Int)
 	}
 
-	tsr.Nonce.SetBytes(buf[:])
+	r.Nonce.SetBytes(buf[:])
 }
 
-// TimeStampResp ::= SEQUENCE  {
-// 	status                  PKIStatusInfo,
-// 	timeStampToken          TimeStampToken     OPTIONAL  }
+// Response is a TimeStampResp
+// 	TimeStampResp ::= SEQUENCE  {
+// 		status                  PKIStatusInfo,
+// 		timeStampToken          TimeStampToken     OPTIONAL  }
 //
-// TimeStampToken ::= ContentInfo
-type TimeStampResp struct {
+// 	TimeStampToken ::= ContentInfo
+type Response struct {
 	Status         PKIStatusInfo
-	TimeStampToken ContentInfo `asn1:"optional"`
+	TimeStampToken protocol.ContentInfo `asn1:"optional"`
 }
 
-// ParseTimeStampResp parses a BER encoded TimeStampResp.
-func ParseTimeStampResp(ber []byte) (TimeStampResp, error) {
-	var resp TimeStampResp
+// ParseResponse parses a BER encoded TimeStampResp.
+func ParseResponse(ber []byte) (Response, error) {
+	var resp Response
 
-	der, err := ber2der(ber)
+	der, err := protocol.BER2DER(ber)
 	if err != nil {
 		return resp, err
 	}
@@ -128,6 +132,35 @@ type PKIStatusInfo struct {
 	FailInfo     asn1.BitString `asn1:"optional"`
 }
 
+// Error represents an unsuccessful PKIStatusInfo as an error.
+func (si PKIStatusInfo) Error() error {
+	if si.Status == 0 {
+		return nil
+	}
+
+	fiStr := ""
+	if si.FailInfo.BitLength > 0 {
+		fibin := make([]byte, si.FailInfo.BitLength)
+		for i := range fibin {
+			if si.FailInfo.At(i) == 1 {
+				fibin[i] = byte('1')
+			} else {
+				fibin[i] = byte('0')
+			}
+		}
+		fiStr = fmt.Sprintf(" FailInfo(0b%s)", string(fibin))
+	}
+
+	statusStr := ""
+	if len(si.StatusString) > 0 {
+		if strs, err := si.StatusString.Strings(); err == nil {
+			statusStr = fmt.Sprintf(" StatusString(%s)", strings.Join(strs, ","))
+		}
+	}
+
+	return fmt.Errorf("Bad TimeStampResp: Status(%d)%s%s", si.Status, statusStr, fiStr)
+}
+
 // PKIFreeText ::= SEQUENCE SIZE (1..MAX) OF UTF8String
 type PKIFreeText []asn1.RawValue
 
@@ -163,26 +196,27 @@ func (ft PKIFreeText) Strings() ([]string, error) {
 	return strs, nil
 }
 
-// TSTInfo ::= SEQUENCE  {
-//   version                      INTEGER  { v1(1) },
-//   policy                       TSAPolicyId,
-//   messageImprint               MessageImprint,
-//     -- MUST have the same value as the similar field in
-//     -- TimeStampReq
-//   serialNumber                 INTEGER,
-//     -- Time-Stamping users MUST be ready to accommodate integers
-//     -- up to 160 bits.
-//   genTime                      GeneralizedTime,
-//   accuracy                     Accuracy                 OPTIONAL,
-//   ordering                     BOOLEAN             DEFAULT FALSE,
-//   nonce                        INTEGER                  OPTIONAL,
-//     -- MUST be present if the similar field was present
-//     -- in TimeStampReq.  In that case it MUST have the same value.
-//   tsa                          [0] GeneralName          OPTIONAL,
-//   extensions                   [1] IMPLICIT Extensions   OPTIONAL  }
+// Info is a Info
+// 	Info ::= SEQUENCE  {
+// 	  version                      INTEGER  { v1(1) },
+// 	  policy                       TSAPolicyId,
+// 	  messageImprint               MessageImprint,
+// 	    -- MUST have the same value as the similar field in
+// 	    -- TimeStampReq
+// 	  serialNumber                 INTEGER,
+// 	    -- Time-Stamping users MUST be ready to accommodate integers
+// 	    -- up to 160 bits.
+// 	  genTime                      GeneralizedTime,
+// 	  accuracy                     Accuracy                 OPTIONAL,
+// 	  ordering                     BOOLEAN             DEFAULT FALSE,
+// 	  nonce                        INTEGER                  OPTIONAL,
+// 	    -- MUST be present if the similar field was present
+// 	    -- in TimeStampReq.  In that case it MUST have the same value.
+// 	  tsa                          [0] GeneralName          OPTIONAL,
+// 	  extensions                   [1] IMPLICIT Extensions   OPTIONAL  }
 //
-// TSAPolicyId ::= OBJECT IDENTIFIER
-type TSTInfo struct {
+// 	TSAPolicyId ::= OBJECT IDENTIFIER
+type Info struct {
 	Version        int
 	Policy         asn1.ObjectIdentifier
 	MessageImprint MessageImprint
@@ -195,16 +229,41 @@ type TSTInfo struct {
 	Extensions     []pkix.Extension `asn1:"tag:1,optional"`
 }
 
+// ParseInfo parses an Info out of a CMS EncapsulatedContentInfo.
+func ParseInfo(eci protocol.EncapsulatedContentInfo) (Info, error) {
+	i := Info{}
+
+	if !eci.EContentType.Equal(oid.TSTInfo) {
+		return i, protocol.ErrWrongType
+	}
+
+	ecval, err := eci.EContentValue()
+	if err != nil {
+		return i, err
+	}
+	if ecval == nil {
+		return i, errors.New("missing EContent for non data type")
+	}
+
+	if rest, err := asn1.Unmarshal(ecval, &i); err != nil {
+		return i, err
+	} else if len(rest) > 0 {
+		return i, errors.New("unexpected trailing data")
+	}
+
+	return i, nil
+}
+
 // GenTimeMax is the latest time at which the token could have been generated
 // based on the included GenTime and Accuracy attributes.
-func (tsti *TSTInfo) GenTimeMax() time.Time {
-	return tsti.GenTime.Add(tsti.Accuracy.Duration())
+func (i *Info) GenTimeMax() time.Time {
+	return i.GenTime.Add(i.Accuracy.Duration())
 }
 
 // GenTimeMin is the earliest time at which the token could have been generated
 // based on the included GenTime and Accuracy attributes.
-func (tsti *TSTInfo) GenTimeMin() time.Time {
-	return tsti.GenTime.Add(-tsti.Accuracy.Duration())
+func (i *Info) GenTimeMin() time.Time {
+	return i.GenTime.Add(-i.Accuracy.Duration())
 }
 
 // MessageImprint ::= SEQUENCE  {

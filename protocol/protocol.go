@@ -45,7 +45,7 @@ type ContentInfo struct {
 // ParseContentInfo parses a top-level ContentInfo type from BER encoded data.
 func ParseContentInfo(ber []byte) (ci ContentInfo, err error) {
 	var der []byte
-	if der, err = ber2der(ber); err != nil {
+	if der, err = BER2DER(ber); err != nil {
 		return
 	}
 
@@ -90,17 +90,6 @@ type EncapsulatedContentInfo struct {
 // id-data.
 func NewDataEncapsulatedContentInfo(data []byte) (EncapsulatedContentInfo, error) {
 	return NewEncapsulatedContentInfo(data, oid.Data)
-}
-
-// NewTSTInfoEncapsulatedContentInfo creates a new EncapsulatedContentInfo of
-// type id-ct-TSTInfo.
-func NewTSTInfoEncapsulatedContentInfo(tsti *TSTInfo) (EncapsulatedContentInfo, error) {
-	content, err := asn1.Marshal(tsti)
-	if err != nil {
-		return EncapsulatedContentInfo{}, err
-	}
-
-	return NewEncapsulatedContentInfo(content, oid.TSTInfo)
 }
 
 // NewEncapsulatedContentInfo creates a new EncapsulatedContentInfo.
@@ -189,35 +178,6 @@ func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
 		return nil, ErrWrongType
 	}
 	return eci.EContentValue()
-}
-
-// IsTypeTSTInfo checks if the EContentType is id-ct-TSTInfo.
-func (eci EncapsulatedContentInfo) IsTypeTSTInfo() bool {
-	return eci.EContentType.Equal(oid.TSTInfo)
-}
-
-// TSTInfoEContent gets the EContent assuming EContentType is TSTInfo (RFC3161).
-func (eci EncapsulatedContentInfo) TSTInfoEContent() (*TSTInfo, error) {
-	if !eci.EContentType.Equal(oid.TSTInfo) {
-		return nil, ErrWrongType
-	}
-
-	ecval, err := eci.EContentValue()
-	if err != nil {
-		return nil, err
-	}
-	if ecval == nil {
-		return nil, errors.New("missing EContent for non data type")
-	}
-
-	tsti := TSTInfo{}
-	if rest, err := asn1.Unmarshal(ecval, &tsti); err != nil {
-		return nil, err
-	} else if len(rest) > 0 {
-		return nil, errors.New("unexpected trailing data")
-	}
-
-	return &tsti, nil
 }
 
 // Attribute ::= SEQUENCE {
