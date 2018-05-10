@@ -156,7 +156,7 @@ func TestPKIFreeText(t *testing.T) {
 		t.Fatal("expected round-tripped PKIFreeText to match")
 	}
 
-	ft, err = NewPKIFreeText([]string{"Bad message digest."})
+	ft = PKIFreeText{}.Append("Bad message digest.")
 	if err != nil {
 		t.Fatal(err)
 	}

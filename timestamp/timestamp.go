@@ -164,21 +164,14 @@ func (si PKIStatusInfo) Error() error {
 // PKIFreeText ::= SEQUENCE SIZE (1..MAX) OF UTF8String
 type PKIFreeText []asn1.RawValue
 
-// NewPKIFreeText creates a new PKIFreeText from a []string.
-func NewPKIFreeText(txts []string) (PKIFreeText, error) {
-	rvs := make([]asn1.RawValue, len(txts))
-
-	for i := range txts {
-		der, err := asn1.MarshalWithParams(txts[i], "utf8")
-		if err != nil {
-			return nil, err
-		}
-		if _, err := asn1.Unmarshal(der, &rvs[i]); err != nil {
-			return nil, err
-		}
-	}
-
-	return PKIFreeText(rvs), nil
+// Append returns a new copy of the PKIFreeText with the provided string
+// appended.
+func (ft PKIFreeText) Append(t string) PKIFreeText {
+	return append(ft, asn1.RawValue{
+		Class: asn1.ClassUniversal,
+		Tag:   asn1.TagUTF8String,
+		Bytes: []byte(t),
+	})
 }
 
 // Strings decodes the PKIFreeText into a []string.
@@ -186,7 +179,7 @@ func (ft PKIFreeText) Strings() ([]string, error) {
 	strs := make([]string, len(ft))
 
 	for i := range ft {
-		if rest, err := asn1.UnmarshalWithParams(ft[i].FullBytes, &strs[i], "utf8"); err != nil {
+		if rest, err := asn1.Unmarshal(ft[i].FullBytes, &strs[i]); err != nil {
 			return nil, err
 		} else if len(rest) != 0 {
 			return nil, errors.New("unexpected trailing data")
