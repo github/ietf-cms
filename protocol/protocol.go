@@ -14,6 +14,8 @@ import (
 	"time"
 
 	_ "crypto/sha1" // for crypto.SHA1
+
+	"github.com/mastahyeti/cms/oid"
 )
 
 var (
@@ -28,98 +30,6 @@ var (
 	// This error is returned if that assumption is wrong and the field has a
 	// different type.
 	ErrWrongType = errors.New("cms/protocol: wrong choice or any type")
-)
-
-var (
-	nilOID = asn1.ObjectIdentifier(nil)
-
-	// Content type OIDs
-	oidData       = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 1}
-	oidSignedData = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 2}
-	oidTSTInfo    = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 16, 1, 4}
-
-	// Attribute OIDs
-	oidAttributeContentType   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 3}
-	oidAttributeMessageDigest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 4}
-	oidAttributeSigningTime   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 5}
-
-	// Signature Algorithm  OIDs
-	oidSignatureAlgorithmRSA   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
-	oidSignatureAlgorithmECDSA = asn1.ObjectIdentifier{1, 2, 840, 10045, 2, 1}
-
-	// Digest Algorithm OIDs
-	oidDigestAlgorithmSHA1   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
-	oidDigestAlgorithmMD5    = asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 5}
-	oidDigestAlgorithmSHA256 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
-	oidDigestAlgorithmSHA384 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 2}
-	oidDigestAlgorithmSHA512 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 3}
-
-	// X509 extensions
-	oidSubjectKeyIdentifier = asn1.ObjectIdentifier{2, 5, 29, 14}
-
-	// digestAlgorithmToHash maps digest OIDs to crypto.Hash values.
-	digestAlgorithmToHash = map[string]crypto.Hash{
-		oidDigestAlgorithmSHA1.String():   crypto.SHA1,
-		oidDigestAlgorithmMD5.String():    crypto.MD5,
-		oidDigestAlgorithmSHA256.String(): crypto.SHA256,
-		oidDigestAlgorithmSHA384.String(): crypto.SHA384,
-		oidDigestAlgorithmSHA512.String(): crypto.SHA512,
-	}
-
-	// hashToDigestAlgorithm maps crypto.Hash values to digest OIDs.
-	hashToDigestAlgorithm = map[crypto.Hash]asn1.ObjectIdentifier{
-		crypto.SHA1:   oidDigestAlgorithmSHA1,
-		crypto.MD5:    oidDigestAlgorithmMD5,
-		crypto.SHA256: oidDigestAlgorithmSHA256,
-		crypto.SHA384: oidDigestAlgorithmSHA384,
-		crypto.SHA512: oidDigestAlgorithmSHA512,
-	}
-
-	// signatureAlgorithmToDigestAlgorithm maps x509.SignatureAlgorithm to
-	// digestAlgorithm OIDs.
-	signatureAlgorithmToDigestAlgorithm = map[x509.SignatureAlgorithm]asn1.ObjectIdentifier{
-		x509.SHA1WithRSA:     oidDigestAlgorithmSHA1,
-		x509.MD5WithRSA:      oidDigestAlgorithmMD5,
-		x509.SHA256WithRSA:   oidDigestAlgorithmSHA256,
-		x509.SHA384WithRSA:   oidDigestAlgorithmSHA384,
-		x509.SHA512WithRSA:   oidDigestAlgorithmSHA512,
-		x509.ECDSAWithSHA1:   oidDigestAlgorithmSHA1,
-		x509.ECDSAWithSHA256: oidDigestAlgorithmSHA256,
-		x509.ECDSAWithSHA384: oidDigestAlgorithmSHA384,
-		x509.ECDSAWithSHA512: oidDigestAlgorithmSHA512,
-	}
-
-	// signatureAlgorithmToSignatureAlgorithm maps x509.SignatureAlgorithm to
-	// signatureAlgorithm OIDs.
-	signatureAlgorithmToSignatureAlgorithm = map[x509.SignatureAlgorithm]asn1.ObjectIdentifier{
-		x509.SHA1WithRSA:     oidSignatureAlgorithmRSA,
-		x509.MD5WithRSA:      oidSignatureAlgorithmRSA,
-		x509.SHA256WithRSA:   oidSignatureAlgorithmRSA,
-		x509.SHA384WithRSA:   oidSignatureAlgorithmRSA,
-		x509.SHA512WithRSA:   oidSignatureAlgorithmRSA,
-		x509.ECDSAWithSHA1:   oidSignatureAlgorithmECDSA,
-		x509.ECDSAWithSHA256: oidSignatureAlgorithmECDSA,
-		x509.ECDSAWithSHA384: oidSignatureAlgorithmECDSA,
-		x509.ECDSAWithSHA512: oidSignatureAlgorithmECDSA,
-	}
-
-	// signatureAlgorithms maps digest and signature OIDs to
-	// x509.SignatureAlgorithm values.
-	signatureAlgorithms = map[string]map[string]x509.SignatureAlgorithm{
-		oidSignatureAlgorithmRSA.String(): map[string]x509.SignatureAlgorithm{
-			oidDigestAlgorithmSHA1.String():   x509.SHA1WithRSA,
-			oidDigestAlgorithmMD5.String():    x509.MD5WithRSA,
-			oidDigestAlgorithmSHA256.String(): x509.SHA256WithRSA,
-			oidDigestAlgorithmSHA384.String(): x509.SHA384WithRSA,
-			oidDigestAlgorithmSHA512.String(): x509.SHA512WithRSA,
-		},
-		oidSignatureAlgorithmECDSA.String(): map[string]x509.SignatureAlgorithm{
-			oidDigestAlgorithmSHA1.String():   x509.ECDSAWithSHA1,
-			oidDigestAlgorithmSHA256.String(): x509.ECDSAWithSHA256,
-			oidDigestAlgorithmSHA384.String(): x509.ECDSAWithSHA384,
-			oidDigestAlgorithmSHA512.String(): x509.ECDSAWithSHA512,
-		},
-	}
 )
 
 // ContentInfo ::= SEQUENCE {
@@ -152,7 +62,7 @@ func ParseContentInfo(ber []byte) (ci ContentInfo, err error) {
 
 // SignedDataContent gets the content assuming contentType is signedData.
 func (ci ContentInfo) SignedDataContent() (*SignedData, error) {
-	if !ci.ContentType.Equal(oidSignedData) {
+	if !ci.ContentType.Equal(oid.SignedData) {
 		return nil, ErrWrongType
 	}
 
@@ -179,7 +89,7 @@ type EncapsulatedContentInfo struct {
 // NewDataEncapsulatedContentInfo creates a new EncapsulatedContentInfo of type
 // id-data.
 func NewDataEncapsulatedContentInfo(data []byte) (EncapsulatedContentInfo, error) {
-	return NewEncapsulatedContentInfo(data, oidData)
+	return NewEncapsulatedContentInfo(data, oid.Data)
 }
 
 // NewTSTInfoEncapsulatedContentInfo creates a new EncapsulatedContentInfo of
@@ -190,7 +100,7 @@ func NewTSTInfoEncapsulatedContentInfo(tsti *TSTInfo) (EncapsulatedContentInfo, 
 		return EncapsulatedContentInfo{}, err
 	}
 
-	return NewEncapsulatedContentInfo(content, oidTSTInfo)
+	return NewEncapsulatedContentInfo(content, oid.TSTInfo)
 }
 
 // NewEncapsulatedContentInfo creates a new EncapsulatedContentInfo.
@@ -270,7 +180,7 @@ func (eci EncapsulatedContentInfo) EContentValue() ([]byte, error) {
 
 // IsTypeData checks if the EContentType is id-data.
 func (eci EncapsulatedContentInfo) IsTypeData() bool {
-	return eci.EContentType.Equal(oidData)
+	return eci.EContentType.Equal(oid.Data)
 }
 
 // DataEContent gets the EContent assuming EContentType is data.
@@ -283,12 +193,12 @@ func (eci EncapsulatedContentInfo) DataEContent() ([]byte, error) {
 
 // IsTypeTSTInfo checks if the EContentType is id-ct-TSTInfo.
 func (eci EncapsulatedContentInfo) IsTypeTSTInfo() bool {
-	return eci.EContentType.Equal(oidTSTInfo)
+	return eci.EContentType.Equal(oid.TSTInfo)
 }
 
 // TSTInfoEContent gets the EContent assuming EContentType is TSTInfo (RFC3161).
 func (eci EncapsulatedContentInfo) TSTInfoEContent() (*TSTInfo, error) {
-	if !eci.EContentType.Equal(oidTSTInfo) {
+	if !eci.EContentType.Equal(oid.TSTInfo) {
 		return nil, ErrWrongType
 	}
 
@@ -519,7 +429,7 @@ func (si SignerInfo) FindCertificate(certs []*x509.Certificate) (*x509.Certifica
 
 		for _, cert := range certs {
 			for _, ext := range cert.Extensions {
-				if oidSubjectKeyIdentifier.Equal(ext.Id) {
+				if oid.SubjectKeyIdentifier.Equal(ext.Id) {
 					if bytes.Equal(ski, ext.Value) {
 						return cert, nil
 					}
@@ -561,7 +471,7 @@ func (si SignerInfo) subjectKeyIdentifierSID() ([]byte, error) {
 // 0 is returned for unrecognized algorithms.
 func (si SignerInfo) Hash() (crypto.Hash, error) {
 	algo := si.DigestAlgorithm.Algorithm.String()
-	hash := digestAlgorithmToHash[algo]
+	hash := oid.DigestAlgorithmToHash[algo]
 	if hash == 0 {
 		return 0, fmt.Errorf("unknown digest algorithm: %s", algo)
 	}
@@ -580,13 +490,13 @@ func (si SignerInfo) X509SignatureAlgorithm() x509.SignatureAlgorithm {
 		digestOID = si.DigestAlgorithm.Algorithm.String()
 	)
 
-	return signatureAlgorithms[sigOID][digestOID]
+	return oid.SignatureAlgorithms[sigOID][digestOID]
 }
 
 // GetContentTypeAttribute gets the signed ContentType attribute from the
 // SignerInfo.
 func (si SignerInfo) GetContentTypeAttribute() (asn1.ObjectIdentifier, error) {
-	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oidAttributeContentType)
+	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oid.AttributeContentType)
 	if err != nil {
 		return nil, err
 	}
@@ -604,7 +514,7 @@ func (si SignerInfo) GetContentTypeAttribute() (asn1.ObjectIdentifier, error) {
 // GetMessageDigestAttribute gets the signed MessageDigest attribute from the
 // SignerInfo.
 func (si SignerInfo) GetMessageDigestAttribute() ([]byte, error) {
-	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oidAttributeMessageDigest)
+	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oid.AttributeMessageDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -623,7 +533,7 @@ func (si SignerInfo) GetMessageDigestAttribute() ([]byte, error) {
 func (si SignerInfo) GetSigningTimeAttribute() (time.Time, error) {
 	var t time.Time
 
-	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oidAttributeSigningTime)
+	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oid.AttributeSigningTime)
 	if err != nil {
 		return t, err
 	}
@@ -741,12 +651,12 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 		return err
 	}
 
-	digestAlgorithm := signatureAlgorithmToDigestAlgorithm[cert.SignatureAlgorithm]
+	digestAlgorithm := oid.SignatureAlgorithmToDigestAlgorithm[cert.SignatureAlgorithm]
 	if digestAlgorithm == nil {
 		return errors.New("unsupported digest algorithm")
 	}
 
-	signatureAlgorithm := signatureAlgorithmToSignatureAlgorithm[cert.SignatureAlgorithm]
+	signatureAlgorithm := oid.SignatureAlgorithmToSignatureAlgorithm[cert.SignatureAlgorithm]
 	if signatureAlgorithm == nil {
 		return errors.New("unsupported signature algorithm")
 	}
@@ -782,11 +692,11 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 	}
 
 	// Build our SignedAttributes
-	mdAttr, err := NewAttribute(oidAttributeMessageDigest, md.Sum(nil))
+	mdAttr, err := NewAttribute(oid.AttributeMessageDigest, md.Sum(nil))
 	if err != nil {
 		return err
 	}
-	ctAttr, err := NewAttribute(oidAttributeContentType, oidData)
+	ctAttr, err := NewAttribute(oid.AttributeContentType, oid.Data)
 	if err != nil {
 		return err
 	}
@@ -879,7 +789,7 @@ func (sd *SignedData) ContentInfoDER() ([]byte, error) {
 	}
 
 	ci := ContentInfo{
-		ContentType: oidSignedData,
+		ContentType: oid.SignedData,
 		Content: asn1.RawValue{
 			Class:      asn1.ClassContextSpecific,
 			Tag:        0,

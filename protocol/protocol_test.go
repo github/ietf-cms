@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mastahyeti/cms/oid"
 	"golang.org/x/crypto/pkcs12"
 )
 
@@ -24,7 +25,7 @@ func TestSignerInfo(t *testing.T) {
 
 	msg := []byte("hello, world!")
 
-	eci, err := NewEncapsulatedContentInfo(msg, oidData)
+	eci, err := NewEncapsulatedContentInfo(msg, oid.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +100,7 @@ func TestEncapsulatedContentInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newECI, err := NewEncapsulatedContentInfo(oldData, oidData)
+	newECI, err := NewEncapsulatedContentInfo(oldData, oid.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,13 +141,13 @@ func TestMessageDigestAttribute(t *testing.T) {
 
 	var oldAttr Attribute
 	for _, attr := range si.SignedAttrs {
-		if attr.Type.Equal(oidAttributeMessageDigest) {
+		if attr.Type.Equal(oid.AttributeMessageDigest) {
 			oldAttr = attr
 			break
 		}
 	}
 
-	newAttr, err := NewAttribute(oidAttributeMessageDigest, oldAttrVal)
+	newAttr, err := NewAttribute(oid.AttributeMessageDigest, oldAttrVal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,13 +183,13 @@ func TestContentTypeAttribute(t *testing.T) {
 
 	var oldAttr Attribute
 	for _, attr := range si.SignedAttrs {
-		if attr.Type.Equal(oidAttributeContentType) {
+		if attr.Type.Equal(oid.AttributeContentType) {
 			oldAttr = attr
 			break
 		}
 	}
 
-	newAttr, err := NewAttribute(oidAttributeContentType, oldAttrVal)
+	newAttr, err := NewAttribute(oid.AttributeContentType, oldAttrVal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,8 +298,8 @@ func testParseContentInfo(t *testing.T, ber []byte) {
 	}
 
 	if sd.EncapContentInfo.IsTypeData() {
-		if !sd.EncapContentInfo.EContentType.Equal(oidData) {
-			t.Fatalf("expected %s content, got %s", oidData.String(), sd.EncapContentInfo.EContentType.String())
+		if !sd.EncapContentInfo.EContentType.Equal(oid.Data) {
+			t.Fatalf("expected %s content, got %s", oid.Data.String(), sd.EncapContentInfo.EContentType.String())
 		}
 
 		data, err := sd.EncapContentInfo.DataEContent()
@@ -309,8 +310,8 @@ func testParseContentInfo(t *testing.T, ber []byte) {
 			t.Fatal("attached signature with zero length data")
 		}
 	} else if sd.EncapContentInfo.IsTypeTSTInfo() {
-		if !sd.EncapContentInfo.EContentType.Equal(oidTSTInfo) {
-			t.Fatalf("expected %s content, got %s", oidTSTInfo.String(), sd.EncapContentInfo.EContentType.String())
+		if !sd.EncapContentInfo.EContentType.Equal(oid.TSTInfo) {
+			t.Fatalf("expected %s content, got %s", oid.TSTInfo.String(), sd.EncapContentInfo.EContentType.String())
 		}
 
 		tsti, err := sd.EncapContentInfo.TSTInfoEContent()

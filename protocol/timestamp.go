@@ -11,6 +11,8 @@ import (
 	"io"
 	"math/big"
 	"time"
+
+	"github.com/mastahyeti/cms/oid"
 )
 
 // TimeStampReq ::= SEQUENCE  {
@@ -216,7 +218,7 @@ type MessageImprint struct {
 // NewMessageImprint creates a new MessageImprint, digesting all bytes from the
 // provided reader using the specified hash.
 func NewMessageImprint(hash crypto.Hash, r io.Reader) (MessageImprint, error) {
-	digestAlgorithm := hashToDigestAlgorithm[hash]
+	digestAlgorithm := oid.HashToDigestAlgorithm[hash]
 	if len(digestAlgorithm) == 0 {
 		return MessageImprint{}, fmt.Errorf("Unsupported hash algorithm: %d", hash)
 	}
@@ -239,7 +241,7 @@ func NewMessageImprint(hash crypto.Hash, r io.Reader) (MessageImprint, error) {
 // 0 is returned for unrecognized algorithms.
 func (mi MessageImprint) Hash() (crypto.Hash, error) {
 	algo := mi.HashAlgorithm.Algorithm.String()
-	hash := digestAlgorithmToHash[algo]
+	hash := oid.DigestAlgorithmToHash[algo]
 	if hash == 0 {
 		return 0, fmt.Errorf("unknown digest algorithm: %s", algo)
 	}
