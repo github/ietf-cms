@@ -63,7 +63,7 @@ func TestMessageImprint(t *testing.T) {
 
 	// null value for hash alrogithm parameters (as opposed to being absent entirely)
 	mi2, _ = NewMessageImprint(crypto.SHA256, bytes.NewReader(m))
-	mi2.HashAlgorithm.Parameters = asn1.RawValue{Tag: 5} // go1.10 has asn1.NullRawValue
+	mi2.HashAlgorithm.Parameters = asn1.NullRawValue
 	if !mi1.Equal(mi2) {
 		t.Fatal("expected m1==m2")
 	}
