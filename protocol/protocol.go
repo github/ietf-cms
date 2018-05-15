@@ -89,11 +89,11 @@ type EncapsulatedContentInfo struct {
 // NewDataEncapsulatedContentInfo creates a new EncapsulatedContentInfo of type
 // id-data.
 func NewDataEncapsulatedContentInfo(data []byte) (EncapsulatedContentInfo, error) {
-	return NewEncapsulatedContentInfo(data, oid.Data)
+	return NewEncapsulatedContentInfo(oid.Data, data)
 }
 
 // NewEncapsulatedContentInfo creates a new EncapsulatedContentInfo.
-func NewEncapsulatedContentInfo(content []byte, contentType asn1.ObjectIdentifier) (EncapsulatedContentInfo, error) {
+func NewEncapsulatedContentInfo(contentType asn1.ObjectIdentifier, content []byte) (EncapsulatedContentInfo, error) {
 	octets, err := asn1.Marshal(asn1.RawValue{
 		Class:      asn1.ClassUniversal,
 		Tag:        asn1.TagOctetString,

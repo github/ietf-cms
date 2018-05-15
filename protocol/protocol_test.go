@@ -23,7 +23,7 @@ func TestSignerInfo(t *testing.T) {
 
 	msg := []byte("hello, world!")
 
-	eci, err := NewEncapsulatedContentInfo(msg, oid.Data)
+	eci, err := NewEncapsulatedContentInfo(oid.Data, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestEncapsulatedContentInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newECI, err := NewEncapsulatedContentInfo(oldData, oid.Data)
+	newECI, err := NewEncapsulatedContentInfo(oid.Data, oldData)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package cms
 
 import (
 	"bytes"
+	"errors"
 
 	"github.com/mastahyeti/cms/oid"
 	"github.com/mastahyeti/cms/protocol"
@@ -41,14 +42,22 @@ func fetchTS(url string, si protocol.SignerInfo) (protocol.Attribute, error) {
 		return nilAttr, err
 	}
 
-	req, err := timestamp.NewRequest(hash, bytes.NewReader(si.Signature))
-	if err != nil {
+	req := timestamp.NewRequest()
+	req.CertReq = true
+	req.Nonce = timestamp.GenerateNonce()
+	if req.MessageImprint, err = timestamp.NewMessageImprint(hash, bytes.NewReader(si.Signature)); err != nil {
 		return nilAttr, err
 	}
 
 	resp, err := req.Do(url)
 	if err != nil {
 		return nilAttr, err
+	}
+
+	if tsti, err := resp.Info(); err != nil {
+		return nilAttr, err
+	} else if !req.Matches(tsti) {
+		return nilAttr, errors.New("response doesn't match request")
 	}
 
 	return protocol.NewAttribute(oid.AttributeTimeStampToken, resp.TimeStampToken)

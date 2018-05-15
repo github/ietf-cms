@@ -68,13 +68,27 @@ func NewRequest() Request {
 	return Request{Version: 1}
 }
 
+// Matches checks if the MessageImprint and Nonce from a responsee match those
+// of the request.
+func (req Request) Matches(tsti Info) bool {
+	if !req.MessageImprint.Equal(tsti.MessageImprint) {
+		return false
+	}
+
+	if req.Nonce != nil && tsti.Nonce == nil || req.Nonce.Cmp(tsti.Nonce) != 0 {
+		return false
+	}
+
+	return true
+}
+
 // Do sends this timestamp request to the specified timestamp service, returning
 // the parsed response. The timestamp.HTTPClient is used to make the request and
 // HTTP behavior can be modified by changing that variable.
-func (r Request) Do(url string) (Response, error) {
+func (req Request) Do(url string) (Response, error) {
 	var nilResp Response
 
-	reqDER, err := asn1.Marshal(r)
+	reqDER, err := asn1.Marshal(req)
 	if err != nil {
 		return nilResp, err
 	}

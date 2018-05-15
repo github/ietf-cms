@@ -30,7 +30,7 @@ func (c testHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return nil, errFakeClient
 }
 
-func TestRequest(t *testing.T) {
+func TestRequestDo(t *testing.T) {
 	DefaultHTTPClient = testHTTPClient{}
 
 	var (
@@ -70,6 +70,36 @@ func TestRequest(t *testing.T) {
 		t.Fatal(err)
 	} else if len(rest) > 0 {
 		t.Fatal("unexpected trailing data")
+	}
+}
+
+func TestRequestMatches(t *testing.T) {
+	var err error
+
+	req := NewRequest()
+	req.Nonce = GenerateNonce()
+	if req.MessageImprint, err = NewMessageImprint(crypto.SHA256, bytes.NewReader([]byte("hello"))); err != nil {
+		t.Fatal(err)
+	}
+
+	tsti := Info{
+		MessageImprint: req.MessageImprint,
+		Nonce:          new(big.Int).Set(req.Nonce),
+	}
+
+	if !req.Matches(tsti) {
+		t.Fatal("req doesn't match tsti")
+	}
+
+	tsti.Nonce.SetInt64(123)
+	if req.Matches(tsti) {
+		t.Fatal("req matches tsti")
+	}
+	tsti.Nonce.Set(req.Nonce)
+
+	tsti.MessageImprint, _ = NewMessageImprint(crypto.SHA256, bytes.NewReader([]byte("asdf")))
+	if req.Matches(tsti) {
+		t.Fatal("req matches tsti")
 	}
 }
 
