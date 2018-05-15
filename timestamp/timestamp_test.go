@@ -7,8 +7,10 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"io"
 	"math/big"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -16,19 +18,73 @@ import (
 	"github.com/mastahyeti/cms/protocol"
 )
 
-func TestTimeStampReq(t *testing.T) {
-	tsr := new(Request)
+var (
+	errFakeClient = errors.New("fake client")
+	lastRequest   *http.Request
+)
 
-	tsr.GenerateNonce()
-	if tsr.Nonce == nil {
+type testHTTPClient struct{}
+
+func (c testHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	lastRequest = req
+	return nil, errFakeClient
+}
+
+func TestRequest(t *testing.T) {
+	DefaultHTTPClient = testHTTPClient{}
+
+	var (
+		req = NewRequest()
+		err error
+	)
+
+	req.CertReq = true
+	req.Nonce = GenerateNonce()
+	if req.MessageImprint, err = NewMessageImprint(crypto.SHA256, bytes.NewReader([]byte("hello"))); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = req.Do("https://google.com"); err != errFakeClient {
+		t.Fatalf("expected errFakeClient, got %v", err)
+	}
+
+	if lastRequest == nil {
+		t.Fatal("expected lastRequest")
+	}
+
+	if ct := lastRequest.Header.Get("Content-Type"); ct != contentTypeTSQuery {
+		t.Fatalf("expected ts content-type, got %s", ct)
+	}
+
+	body, err := lastRequest.GetBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := bytes.NewBuffer(nil)
+	if _, err := io.Copy(buf, body); err != nil {
+		t.Fatal(err)
+	}
+
+	var req2 Request
+	if rest, err := asn1.Unmarshal(buf.Bytes(), &req2); err != nil {
+		t.Fatal(err)
+	} else if len(rest) > 0 {
+		t.Fatal("unexpected trailing data")
+	}
+}
+
+func TestGenerateNonce(t *testing.T) {
+	nonce := GenerateNonce()
+	if nonce == nil {
 		t.Fatal("expected non-nil nonce")
 	}
+
 	// don't check for exact bitlength match, since leading 0's don't count
 	// towards length.
-	if tsr.Nonce.BitLen() < nonceBytes*8/2 {
-		t.Fatalf("expected %d bit nonce, got %d", nonceBytes*8, tsr.Nonce.BitLen())
+	if nonce.BitLen() < nonceBytes*8/2 {
+		t.Fatalf("expected %d bit nonce, got %d", nonceBytes*8, nonce.BitLen())
 	}
-	if tsr.Nonce.Cmp(new(big.Int)) == 0 {
+	if nonce.Cmp(new(big.Int)) == 0 {
 		t.Fatal("expected non-zero nonce")
 	}
 }
@@ -94,7 +150,7 @@ func TestMessageImprint(t *testing.T) {
 	}
 }
 
-func TestErrorTimeStampResp(t *testing.T) {
+func TestErrorResponse(t *testing.T) {
 	// Error response from request with missing message digest.
 	respDER, _ := protocol.BER2DER(mustBase64Decode("MDQwMgIBAjApDCd0aGUgZGF0YSBzdWJtaXR0ZWQgaGFzIHRoZSB3cm9uZyBmb3JtYXQDAgIE"))
 	resp, err := ParseResponse(respDER)
@@ -180,7 +236,7 @@ func TestTSTInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	inf, err := ParseInfo(sd.EncapContentInfo)
+	inf, err := parseInfo(sd.EncapContentInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +346,7 @@ func testParseInfo(t *testing.T, ber []byte) {
 		t.Fatal(err)
 	}
 
-	inf, err := ParseInfo(sd.EncapContentInfo)
+	inf, err := parseInfo(sd.EncapContentInfo)
 	if err != nil {
 		t.Fatal(err)
 	}

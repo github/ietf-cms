@@ -10,12 +10,39 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/mastahyeti/cms/oid"
 	"github.com/mastahyeti/cms/protocol"
 )
+
+// HTTPClient is an interface for *http.Client, allowing callers to customize
+// HTTP behavior.
+type HTTPClient interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+// DefaultHTTPClient is the HTTP client used for fetching timestamps. This
+// variable may be changed to modify HTTP behavior (eg. add timeouts).
+var DefaultHTTPClient = HTTPClient(http.DefaultClient)
+
+const (
+	contentTypeTSQuery = "application/timestamp-query"
+	contentTypeTSReply = "application/timestamp-reply"
+	nonceBytes         = 16
+)
+
+// GenerateNonce generates a new nonce for this TSR.
+func GenerateNonce() *big.Int {
+	buf := make([]byte, nonceBytes)
+	if _, err := rand.Read(buf); err != nil {
+		panic(err)
+	}
+
+	return new(big.Int).SetBytes(buf[:])
+}
 
 // Request is a TimeStampReq
 // 	TimeStampReq ::= SEQUENCE  {
@@ -36,20 +63,42 @@ type Request struct {
 	Extensions     []pkix.Extension      `asn1:"tag:1,optional"`
 }
 
-const nonceBytes = 16
+// NewRequest returns a new Request.
+func NewRequest() Request {
+	return Request{Version: 1}
+}
 
-// GenerateNonce generates a new nonce for this TSR.
-func (r *Request) GenerateNonce() {
-	buf := make([]byte, nonceBytes)
-	if _, err := rand.Read(buf); err != nil {
-		panic(err)
+// Do sends this timestamp request to the specified timestamp service, returning
+// the parsed response. The timestamp.HTTPClient is used to make the request and
+// HTTP behavior can be modified by changing that variable.
+func (r Request) Do(url string) (Response, error) {
+	var nilResp Response
+
+	reqDER, err := asn1.Marshal(r)
+	if err != nil {
+		return nilResp, err
 	}
 
-	if r.Nonce == nil {
-		r.Nonce = new(big.Int)
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqDER))
+	if err != nil {
+		return nilResp, err
+	}
+	httpReq.Header.Add("Content-Type", contentTypeTSQuery)
+
+	httpResp, err := DefaultHTTPClient.Do(httpReq)
+	if err != nil {
+		return nilResp, err
+	}
+	if ct := httpResp.Header.Get("Content-Type"); ct != contentTypeTSReply {
+		return nilResp, fmt.Errorf("Bad content-type: %s", ct)
 	}
 
-	r.Nonce.SetBytes(buf[:])
+	buf := bytes.NewBuffer(make([]byte, 0, httpResp.ContentLength))
+	if _, err = io.Copy(buf, httpResp.Body); err != nil {
+		return nilResp, err
+	}
+
+	return ParseResponse(buf.Bytes())
 }
 
 // Response is a TimeStampResp
@@ -81,6 +130,22 @@ func ParseResponse(ber []byte) (Response, error) {
 	}
 
 	return resp, nil
+}
+
+// Info gets an Info from the response, doing no validation of the SignedData.
+func (r Response) Info() (Info, error) {
+	var nilInfo Info
+
+	if err := r.Status.Error(); err != nil {
+		return nilInfo, err
+	}
+
+	sd, err := r.TimeStampToken.SignedDataContent()
+	if err != nil {
+		return nilInfo, err
+	}
+
+	return parseInfo(sd.EncapContentInfo)
 }
 
 // PKIStatusInfo ::= SEQUENCE {
@@ -189,8 +254,8 @@ func (ft PKIFreeText) Strings() ([]string, error) {
 	return strs, nil
 }
 
-// Info is a Info
-// 	Info ::= SEQUENCE  {
+// Info is a TSTInfo
+// 	TSTInfo ::= SEQUENCE  {
 // 	  version                      INTEGER  { v1(1) },
 // 	  policy                       TSAPolicyId,
 // 	  messageImprint               MessageImprint,
@@ -222,8 +287,8 @@ type Info struct {
 	Extensions     []pkix.Extension `asn1:"tag:1,optional"`
 }
 
-// ParseInfo parses an Info out of a CMS EncapsulatedContentInfo.
-func ParseInfo(eci protocol.EncapsulatedContentInfo) (Info, error) {
+// parseInfo parses an Info out of a CMS EncapsulatedContentInfo.
+func parseInfo(eci protocol.EncapsulatedContentInfo) (Info, error) {
 	i := Info{}
 
 	if !eci.EContentType.Equal(oid.TSTInfo) {
