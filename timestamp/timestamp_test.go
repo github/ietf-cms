@@ -34,7 +34,7 @@ func TestRequestDo(t *testing.T) {
 	DefaultHTTPClient = testHTTPClient{}
 
 	var (
-		req = NewRequest()
+		req = Request{Version: 1}
 		err error
 	)
 
@@ -76,7 +76,7 @@ func TestRequestDo(t *testing.T) {
 func TestRequestMatches(t *testing.T) {
 	var err error
 
-	req := NewRequest()
+	req := Request{Version: 1}
 	req.Nonce = GenerateNonce()
 	if req.MessageImprint, err = NewMessageImprint(crypto.SHA256, bytes.NewReader([]byte("hello"))); err != nil {
 		t.Fatal(err)
@@ -266,7 +266,7 @@ func TestTSTInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	inf, err := parseInfo(sd.EncapContentInfo)
+	inf, err := ParseInfo(sd.EncapContentInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,13 +312,13 @@ func TestTSTInfo(t *testing.T) {
 	}
 
 	expectedGenTimeMax := expectedGenTime.Add(expectedAccuracy)
-	if inf.GenTimeMax() != expectedGenTimeMax {
-		t.Fatalf("expected gentimemax %s, got %s", expectedGenTimeMax.String(), inf.GenTimeMax().String())
+	if inf.genTimeMax() != expectedGenTimeMax {
+		t.Fatalf("expected gentimemax %s, got %s", expectedGenTimeMax.String(), inf.genTimeMax().String())
 	}
 
 	expectedGenTimeMin := expectedGenTime.Add(-expectedAccuracy)
-	if inf.GenTimeMin() != expectedGenTimeMin {
-		t.Fatalf("expected gentimemax %s, got %s", expectedGenTimeMin.String(), inf.GenTimeMin().String())
+	if inf.genTimeMin() != expectedGenTimeMin {
+		t.Fatalf("expected gentimemax %s, got %s", expectedGenTimeMin.String(), inf.genTimeMin().String())
 	}
 
 	expectedOrdering := false
@@ -362,7 +362,7 @@ func testParseInfo(t *testing.T, ber []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = resp.Status.Error(); err != nil {
+	if err = resp.Status.GetError(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -376,7 +376,7 @@ func testParseInfo(t *testing.T, ber []byte) {
 		t.Fatal(err)
 	}
 
-	inf, err := parseInfo(sd.EncapContentInfo)
+	inf, err := ParseInfo(sd.EncapContentInfo)
 	if err != nil {
 		t.Fatal(err)
 	}

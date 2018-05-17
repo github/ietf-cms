@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"bytes"
-	"errors"
 )
 
 var encodeIndent = 0
@@ -57,7 +56,7 @@ func (p asn1Primitive) encodeTo(out *bytes.Buffer) error {
 // BER2DER attempts to convert BER encoded data to DER encoding.
 func BER2DER(ber []byte) ([]byte, error) {
 	if len(ber) == 0 {
-		return nil, errors.New("ber2der: input ber is empty")
+		return nil, ASN1Error{"ber2der: input ber is empty"}
 	}
 	//fmt.Printf("--> ber2der: Transcoding %d bytes\n", len(ber))
 	out := new(bytes.Buffer)
@@ -166,13 +165,13 @@ func readObject(ber []byte, offset int) (asn1Object, int, error) {
 	if l > 0x80 {
 		numberOfBytes := (int)(l & 0x7F)
 		if numberOfBytes > 4 { // int is only guaranteed to be 32bit
-			return nil, 0, errors.New("ber2der: BER tag length too long")
+			return nil, 0, ASN1Error{"ber2der: BER tag length too long"}
 		}
 		if numberOfBytes == 4 && (int)(ber[offset]) > 0x7F {
-			return nil, 0, errors.New("ber2der: BER tag length is negative")
+			return nil, 0, ASN1Error{"ber2der: BER tag length is negative"}
 		}
 		if 0x0 == (int)(ber[offset]) {
-			return nil, 0, errors.New("ber2der: BER tag length has leading zero")
+			return nil, 0, ASN1Error{"ber2der: BER tag length has leading zero"}
 		}
 		//fmt.Printf("--> (compute length) indicator byte: %x\n", l)
 		//fmt.Printf("--> (compute length) length bytes: % X\n", ber[offset:offset+numberOfBytes])
@@ -189,14 +188,14 @@ func readObject(ber []byte, offset int) (asn1Object, int, error) {
 	//fmt.Printf("--> length        : %d\n", length)
 	contentEnd := offset + length
 	if contentEnd > len(ber) {
-		return nil, 0, errors.New("ber2der: BER tag length is more than available data")
+		return nil, 0, ASN1Error{"ber2der: BER tag length is more than available data"}
 	}
 	//fmt.Printf("--> content start : %d\n", offset)
 	//fmt.Printf("--> content end   : %d\n", contentEnd)
 	//fmt.Printf("--> content       : % X\n", ber[offset:contentEnd])
 	var obj asn1Object
 	if indefinite && kind == 0 {
-		return nil, 0, errors.New("ber2der: Indefinite form tag must have constructed encoding")
+		return nil, 0, ASN1Error{"ber2der: Indefinite form tag must have constructed encoding"}
 	}
 	if kind == 0 {
 		obj = asn1Primitive{
@@ -242,7 +241,7 @@ func readObject(ber []byte, offset int) (asn1Object, int, error) {
 
 func isIndefiniteTermination(ber []byte, offset int) (bool, error) {
 	if len(ber)-offset < 2 {
-		return false, errors.New("ber2der: Invalid BER format")
+		return false, ASN1Error{"ber2der: Invalid BER format"}
 	}
 
 	return bytes.Index(ber[offset:], []byte{0x0, 0x0}) == 0, nil

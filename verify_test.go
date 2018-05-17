@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/mastahyeti/cms/protocol"
 )
 
 func TestVerify(t *testing.T) {
@@ -56,8 +58,8 @@ func TestVerifyGPGSMNoCerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err.Error() != "no certificates" {
-		t.Fatal(err)
+	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err != protocol.ErrNoCertificate {
+		t.Fatalf("expected %v, got %v", protocol.ErrNoCertificate, err)
 	}
 }
 
@@ -108,18 +110,24 @@ func TestVerifyChain(t *testing.T) {
 	}
 
 	// bad root
-	if _, err = sd.Verify(otherRoot.ChainPool()); err == nil {
-		t.Fatal("expected error")
+	if _, err = sd.Verify(otherRoot.ChainPool()); err != nil {
+		if _, isX509Err := err.(x509.UnknownAuthorityError); !isX509Err {
+			t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
+		}
 	}
 
 	// system root
-	if _, err = sd.Verify(nil); err == nil {
-		t.Fatal("expected error")
+	if _, err = sd.Verify(nil); err != nil {
+		if _, isX509Err := err.(x509.UnknownAuthorityError); !isX509Err {
+			t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
+		}
 	}
 
 	// no root
-	if _, err = sd.Verify(x509.NewCertPool()); err == nil {
-		t.Fatal("expected error")
+	if _, err = sd.Verify(x509.NewCertPool()); err != nil {
+		if _, isX509Err := err.(x509.UnknownAuthorityError); !isX509Err {
+			t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
+		}
 	}
 }
 

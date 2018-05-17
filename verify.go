@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+
+	"github.com/mastahyeti/cms/protocol"
 )
 
 // UnsafeNoVerify instructs Verify and VerifyDetached not to verify signature's
@@ -42,7 +44,7 @@ func (sd *SignedData) VerifyDetached(message []byte, roots *x509.CertPool) ([]*x
 
 func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Certificate, error) {
 	if len(sd.psd.SignerInfos) == 0 {
-		return nil, errors.New("no signatures found")
+		return nil, protocol.ASN1Error{Message: "no signatures found"}
 	}
 
 	certs, err := sd.psd.X509Certificates()
@@ -80,7 +82,7 @@ func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Cer
 			// SignedAttrs may only be absent if EncapContentInfo eContentType is
 			// id-data.
 			if !sd.psd.EncapContentInfo.IsTypeData() {
-				return nil, errors.New("missing SignedAttrs")
+				return nil, protocol.ASN1Error{Message: "missing SignedAttrs"}
 			}
 
 			// If SignedAttrs is absent, the signature is over the original
@@ -94,7 +96,7 @@ func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Cer
 				return nil, err
 			}
 			if !siContentType.Equal(sd.psd.EncapContentInfo.EContentType) {
-				return nil, errors.New("invalid SignerInfo ContentType attribute")
+				return nil, protocol.ASN1Error{Message: "invalid SignerInfo ContentType attribute"}
 			}
 
 			// Calculate the digest over the actual message.
@@ -133,7 +135,7 @@ func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Cer
 
 		algo := si.X509SignatureAlgorithm()
 		if algo == x509.UnknownSignatureAlgorithm {
-			return nil, errors.New("unsupported signature or digest algorithm")
+			return nil, protocol.ErrUnsupported
 		}
 
 		if err := cert.CheckSignature(algo, signedMessage, si.Signature); err != nil {

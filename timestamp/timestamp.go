@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -61,11 +60,6 @@ type Request struct {
 	Nonce          *big.Int              `asn1:"optional"`
 	CertReq        bool                  `asn1:"optional,default:false"`
 	Extensions     []pkix.Extension      `asn1:"tag:1,optional"`
-}
-
-// NewRequest returns a new Request.
-func NewRequest() Request {
-	return Request{Version: 1}
 }
 
 // Matches checks if the MessageImprint and Nonce from a responsee match those
@@ -140,7 +134,7 @@ func ParseResponse(ber []byte) (Response, error) {
 		return resp, err
 	}
 	if len(rest) > 0 {
-		return resp, errors.New("unexpected trailing data")
+		return resp, protocol.ErrTrailingData
 	}
 
 	return resp, nil
@@ -150,7 +144,7 @@ func ParseResponse(ber []byte) (Response, error) {
 func (r Response) Info() (Info, error) {
 	var nilInfo Info
 
-	if err := r.Status.Error(); err != nil {
+	if err := r.Status.GetError(); err != nil {
 		return nilInfo, err
 	}
 
@@ -159,7 +153,7 @@ func (r Response) Info() (Info, error) {
 		return nilInfo, err
 	}
 
-	return parseInfo(sd.EncapContentInfo)
+	return ParseInfo(sd.EncapContentInfo)
 }
 
 // PKIStatusInfo ::= SEQUENCE {
@@ -212,11 +206,15 @@ type PKIStatusInfo struct {
 }
 
 // Error represents an unsuccessful PKIStatusInfo as an error.
-func (si PKIStatusInfo) Error() error {
+func (si PKIStatusInfo) GetError() error {
 	if si.Status == 0 {
 		return nil
 	}
+	return si
+}
 
+// Error implements the error interface.
+func (si PKIStatusInfo) Error() string {
 	fiStr := ""
 	if si.FailInfo.BitLength > 0 {
 		fibin := make([]byte, si.FailInfo.BitLength)
@@ -237,7 +235,7 @@ func (si PKIStatusInfo) Error() error {
 		}
 	}
 
-	return fmt.Errorf("Bad TimeStampResp: Status(%d)%s%s", si.Status, statusStr, fiStr)
+	return fmt.Sprintf("Bad TimeStampResp: Status(%d)%s%s", si.Status, statusStr, fiStr)
 }
 
 // PKIFreeText ::= SEQUENCE SIZE (1..MAX) OF UTF8String
@@ -261,7 +259,7 @@ func (ft PKIFreeText) Strings() ([]string, error) {
 		if rest, err := asn1.Unmarshal(ft[i].FullBytes, &strs[i]); err != nil {
 			return nil, err
 		} else if len(rest) != 0 {
-			return nil, errors.New("unexpected trailing data")
+			return nil, protocol.ErrTrailingData
 		}
 	}
 
@@ -301,8 +299,8 @@ type Info struct {
 	Extensions     []pkix.Extension `asn1:"tag:1,optional"`
 }
 
-// parseInfo parses an Info out of a CMS EncapsulatedContentInfo.
-func parseInfo(eci protocol.EncapsulatedContentInfo) (Info, error) {
+// ParseInfo parses an Info out of a CMS EncapsulatedContentInfo.
+func ParseInfo(eci protocol.EncapsulatedContentInfo) (Info, error) {
 	i := Info{}
 
 	if !eci.EContentType.Equal(oid.TSTInfo) {
@@ -314,27 +312,41 @@ func parseInfo(eci protocol.EncapsulatedContentInfo) (Info, error) {
 		return i, err
 	}
 	if ecval == nil {
-		return i, errors.New("missing EContent for non data type")
+		return i, protocol.ASN1Error{Message: "missing EContent for non data type"}
 	}
 
 	if rest, err := asn1.Unmarshal(ecval, &i); err != nil {
 		return i, err
 	} else if len(rest) > 0 {
-		return i, errors.New("unexpected trailing data")
+		return i, protocol.ErrTrailingData
 	}
 
 	return i, nil
 }
 
-// GenTimeMax is the latest time at which the token could have been generated
+// Before checks if the latest time the signature could have been generated at
+// is before the specified time. For example, you might check that a signature
+// was made *before* a certificate's not-after date.
+func (i *Info) Before(t time.Time) bool {
+	return i.genTimeMax().Before(t)
+}
+
+// After checks if the earlier time the signature could have been generated at
+// is before the specified time. For example, you might check that a signature
+// was made *after* a certificate's not-before date.
+func (i *Info) After(t time.Time) bool {
+	return i.genTimeMin().After(t)
+}
+
+// genTimeMax is the latest time at which the token could have been generated
 // based on the included GenTime and Accuracy attributes.
-func (i *Info) GenTimeMax() time.Time {
+func (i *Info) genTimeMax() time.Time {
 	return i.GenTime.Add(i.Accuracy.Duration())
 }
 
-// GenTimeMin is the earliest time at which the token could have been generated
+// genTimeMin is the earliest time at which the token could have been generated
 // based on the included GenTime and Accuracy attributes.
-func (i *Info) GenTimeMin() time.Time {
+func (i *Info) genTimeMin() time.Time {
 	return i.GenTime.Add(-i.Accuracy.Duration())
 }
 
@@ -351,11 +363,11 @@ type MessageImprint struct {
 func NewMessageImprint(hash crypto.Hash, r io.Reader) (MessageImprint, error) {
 	digestAlgorithm := oid.HashToDigestAlgorithm[hash]
 	if len(digestAlgorithm) == 0 {
-		return MessageImprint{}, fmt.Errorf("Unsupported hash algorithm: %d", hash)
+		return MessageImprint{}, protocol.ErrUnsupported
 	}
 
 	if !hash.Available() {
-		return MessageImprint{}, fmt.Errorf("Hash not avaialbe: %d", hash)
+		return MessageImprint{}, protocol.ErrUnsupported
 	}
 	h := hash.New()
 	if _, err := io.Copy(h, r); err != nil {
@@ -373,11 +385,8 @@ func NewMessageImprint(hash crypto.Hash, r io.Reader) (MessageImprint, error) {
 func (mi MessageImprint) Hash() (crypto.Hash, error) {
 	algo := mi.HashAlgorithm.Algorithm.String()
 	hash := oid.DigestAlgorithmToHash[algo]
-	if hash == 0 {
-		return 0, fmt.Errorf("unknown digest algorithm: %s", algo)
-	}
-	if !hash.Available() {
-		return 0, fmt.Errorf("Hash not avaialbe: %s", algo)
+	if hash == 0 || !hash.Available() {
+		return 0, protocol.ErrUnsupported
 	}
 
 	return hash, nil

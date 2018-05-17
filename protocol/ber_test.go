@@ -19,7 +19,8 @@ func TestBer2Der(t *testing.T) {
 		t.Errorf("ber2der result did not match.\n\tExpected: % X\n\tActual: % X", expected, der)
 	}
 
-	if der2, err := BER2DER(der); err != nil {
+	der2, err := BER2DER(der)
+	if err != nil {
 		t.Errorf("ber2der on DER bytes failed with error: %v", err)
 	} else {
 		if !bytes.Equal(der, der2) {
@@ -73,7 +74,8 @@ func TestBer2Der_NestedMultipleIndefinite(t *testing.T) {
 		t.Errorf("ber2der result did not match.\n\tExpected: % X\n\tActual: % X", expected, der)
 	}
 
-	if der2, err := BER2DER(der); err != nil {
+	der2, err := BER2DER(der)
+	if err != nil {
 		t.Errorf("ber2der on DER bytes failed with error: %v", err)
 	} else {
 		if !bytes.Equal(der, der2) {
