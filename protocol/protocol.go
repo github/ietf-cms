@@ -4,6 +4,8 @@ package protocol
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -65,32 +67,11 @@ var (
 		oidDigestAlgorithmSHA512.String(): crypto.SHA512,
 	}
 
-	// signatureAlgorithmToDigestAlgorithm maps x509.SignatureAlgorithm to
-	// digestAlgorithm OIDs.
-	signatureAlgorithmToDigestAlgorithm = map[x509.SignatureAlgorithm]asn1.ObjectIdentifier{
-		x509.SHA1WithRSA:     oidDigestAlgorithmSHA1,
-		x509.MD5WithRSA:      oidDigestAlgorithmMD5,
-		x509.SHA256WithRSA:   oidDigestAlgorithmSHA256,
-		x509.SHA384WithRSA:   oidDigestAlgorithmSHA384,
-		x509.SHA512WithRSA:   oidDigestAlgorithmSHA512,
-		x509.ECDSAWithSHA1:   oidDigestAlgorithmSHA1,
-		x509.ECDSAWithSHA256: oidDigestAlgorithmSHA256,
-		x509.ECDSAWithSHA384: oidDigestAlgorithmSHA384,
-		x509.ECDSAWithSHA512: oidDigestAlgorithmSHA512,
-	}
-
-	// signatureAlgorithmToSignatureAlgorithm maps x509.SignatureAlgorithm to
-	// signatureAlgorithm OIDs.
-	signatureAlgorithmToSignatureAlgorithm = map[x509.SignatureAlgorithm]asn1.ObjectIdentifier{
-		x509.SHA1WithRSA:     oidSignatureAlgorithmRSA,
-		x509.MD5WithRSA:      oidSignatureAlgorithmRSA,
-		x509.SHA256WithRSA:   oidSignatureAlgorithmRSA,
-		x509.SHA384WithRSA:   oidSignatureAlgorithmRSA,
-		x509.SHA512WithRSA:   oidSignatureAlgorithmRSA,
-		x509.ECDSAWithSHA1:   oidSignatureAlgorithmECDSA,
-		x509.ECDSAWithSHA256: oidSignatureAlgorithmECDSA,
-		x509.ECDSAWithSHA384: oidSignatureAlgorithmECDSA,
-		x509.ECDSAWithSHA512: oidSignatureAlgorithmECDSA,
+	// publicKeyAlgorithmToSignatureAlgorithm maps certificate public key
+	// algorithms to CMS signature algorithms.
+	publicKeyAlgorithmToSignatureAlgorithm = map[x509.PublicKeyAlgorithm]pkix.AlgorithmIdentifier{
+		x509.RSA:   pkix.AlgorithmIdentifier{Algorithm: oidSignatureAlgorithmRSA},
+		x509.ECDSA: pkix.AlgorithmIdentifier{Algorithm: oidSignatureAlgorithmECDSA},
 	}
 
 	// signatureAlgorithms maps digest and signature OIDs to
@@ -654,22 +635,18 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 		return err
 	}
 
-	digestAlgorithm := signatureAlgorithmToDigestAlgorithm[cert.SignatureAlgorithm]
-	if digestAlgorithm == nil {
-		return errors.New("unsupported digest algorithm")
-	}
-
-	signatureAlgorithm := signatureAlgorithmToSignatureAlgorithm[cert.SignatureAlgorithm]
-	if signatureAlgorithm == nil {
-		return errors.New("unsupported signature algorithm")
+	digestAlgorithm := digestAlgorithmForPublicKey(pub)
+	signatureAlgorithm, ok := publicKeyAlgorithmToSignatureAlgorithm[cert.PublicKeyAlgorithm]
+	if !ok {
+		return errors.New("unsupported certificate public key algorithm")
 	}
 
 	si := SignerInfo{
 		Version:            1,
 		SID:                sid,
-		DigestAlgorithm:    pkix.AlgorithmIdentifier{Algorithm: digestAlgorithm},
+		DigestAlgorithm:    digestAlgorithm,
 		SignedAttrs:        nil,
-		SignatureAlgorithm: pkix.AlgorithmIdentifier{Algorithm: signatureAlgorithm},
+		SignatureAlgorithm: signatureAlgorithm,
 		Signature:          nil,
 		UnsignedAttrs:      nil,
 	}
@@ -686,10 +663,10 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 	// Digest the message.
 	hash := si.Hash()
 	if hash == 0 {
-		return fmt.Errorf("unknown digest algorithm: %s", digestAlgorithm.String())
+		return fmt.Errorf("unknown digest algorithm: %s", digestAlgorithm.Algorithm.String())
 	}
 	if !hash.Available() {
-		return fmt.Errorf("Hash not avaialbe: %s", digestAlgorithm.String())
+		return fmt.Errorf("Hash not avaialbe: %s", digestAlgorithm.Algorithm.String())
 	}
 	md := hash.New()
 	if _, err = md.Write(data); err != nil {
@@ -725,6 +702,21 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 	sd.SignerInfos = append(sd.SignerInfos, si)
 
 	return nil
+}
+
+// algorithmsForPublicKey takes an opinionated stance on what algorithms to use
+// for the given public key.
+func digestAlgorithmForPublicKey(pub crypto.PublicKey) pkix.AlgorithmIdentifier {
+	if ecPub, ok := pub.(*ecdsa.PublicKey); ok {
+		switch ecPub.Curve {
+		case elliptic.P384():
+			return pkix.AlgorithmIdentifier{Algorithm: oidDigestAlgorithmSHA384}
+		case elliptic.P521():
+			return pkix.AlgorithmIdentifier{Algorithm: oidDigestAlgorithmSHA512}
+		}
+	}
+
+	return pkix.AlgorithmIdentifier{Algorithm: oidDigestAlgorithmSHA256}
 }
 
 // addCertificate adds a *x509.Certificate.
