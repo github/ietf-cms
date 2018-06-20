@@ -20,11 +20,10 @@ func TestAddTimestamps(t *testing.T) {
 	if err := sd.AddTimestamps("https://google.com"); err != nil {
 		t.Fatal(err)
 	}
-	tsvs := sd.TimestampsVerifications()
-	if len(tsvs) != 1 {
-		t.Fatal("expected one signerinfo")
+	if _, err := sd.Verify(intermediateOpts); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := tsvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,8 +47,8 @@ func TestAddTimestamps(t *testing.T) {
 	})
 	sd, _ = NewSignedData([]byte("hi"))
 	sd.Sign(leaf.Chain(), leaf.PrivateKey)
-	if err := sd.AddTimestamps("https://google.com"); err != ErrTimestampMismatch {
-		t.Fatalf("expected %v, got %v", ErrTimestampMismatch, err)
+	if err := sd.AddTimestamps("https://google.com"); err == nil || err.Error() != "invalid message imprint" {
+		t.Fatalf("expected 'invalid message imprint', got %v", err)
 	}
 
 	// Bad message imprint
@@ -59,8 +58,8 @@ func TestAddTimestamps(t *testing.T) {
 	})
 	sd, _ = NewSignedData([]byte("hi"))
 	sd.Sign(leaf.Chain(), leaf.PrivateKey)
-	if err := sd.AddTimestamps("https://google.com"); err != ErrTimestampMismatch {
-		t.Fatalf("expected %v, got %v", ErrTimestampMismatch, err)
+	if err := sd.AddTimestamps("https://google.com"); err == nil || err.Error() != "invalid message imprint" {
+		t.Fatalf("expected 'invalid message imprint', got %v", err)
 	}
 }
 
@@ -78,22 +77,11 @@ func TestTimestampsVerifications(t *testing.T) {
 	// Good timestamp
 	tsa.Clear()
 	sd := getTimestampedSignedData()
-	tvs := sd.TimestampsVerifications()
-	if len(tvs) != 1 {
-		t.Fatal("expected 1 signerinfo")
-	}
-	if !tvs[0].getHasTimestamp() {
-		t.Fatal("expected timestamp")
-	}
-	certs, err := tvs[0].Verify(leaf.Certificate, intermediateOpts)
-	if err != nil {
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
-	if len(certs) != 1 {
-		t.Fatal("expected 1 cert")
-	}
-	if !certs[0].Equal(tsa.ident.Certificate) {
-		t.Fatal("expected tsa cert to be found")
+	if _, err := sd.Verify(intermediateOpts); err != nil {
+		t.Fatal(err)
 	}
 
 	// Timestamped maybe before not-before
@@ -108,9 +96,11 @@ func TestTimestampsVerifications(t *testing.T) {
 		return info
 	})
 	sd = getTimestampedSignedData()
-	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != ErrTooOld {
-		t.Fatalf("expected %v, got %v", ErrTooOld, err)
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sd.Verify(intermediateOpts); err == nil || err.Error() != "x509: certificate has expired or is not yet valid" {
+		t.Fatalf("expected expired error, got %v", err)
 	}
 
 	// Timestamped after not-before
@@ -125,8 +115,10 @@ func TestTimestampsVerifications(t *testing.T) {
 		return info
 	})
 	sd = getTimestampedSignedData()
-	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sd.Verify(intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -142,9 +134,11 @@ func TestTimestampsVerifications(t *testing.T) {
 		return info
 	})
 	sd = getTimestampedSignedData()
-	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != ErrTooNew {
-		t.Fatalf("expected %v, got %v", ErrTooNew, err)
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sd.Verify(intermediateOpts); err == nil || err.Error() != "x509: certificate has expired or is not yet valid" {
+		t.Fatalf("expected expired error, got %v", err)
 	}
 
 	// Timestamped before not-after
@@ -159,8 +153,10 @@ func TestTimestampsVerifications(t *testing.T) {
 		return info
 	})
 	sd = getTimestampedSignedData()
-	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sd.Verify(intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -170,9 +166,8 @@ func TestTimestampsVerifications(t *testing.T) {
 		return info
 	})
 	sd = getTimestampedSignedData()
-	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != ErrTimestampMismatch {
-		t.Fatalf("expected %v, got %v", ErrTimestampMismatch, err)
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err == nil || err.Error() != "invalid message imprint" {
+		t.Fatalf("expected 'invalid message imprint', got %v", err)
 	}
 
 	// Untrusted signature
@@ -183,11 +178,10 @@ func TestTimestampsVerifications(t *testing.T) {
 		return tst
 	})
 	sd = getTimestampedSignedData()
-	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
-		if _, ok := err.(x509.UnknownAuthorityError); !ok {
-			t.Fatalf("expected UnknownAuthorityError, got %v", err)
-		}
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err == nil {
+		t.Fatal("expected error")
+	} else if _, ok := err.(x509.UnknownAuthorityError); !ok {
+		t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
 	}
 
 	// Bad signature
@@ -196,8 +190,7 @@ func TestTimestampsVerifications(t *testing.T) {
 		return tst
 	})
 	sd = getTimestampedSignedData()
-	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != rsa.ErrVerification {
+	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != rsa.ErrVerification {
 		t.Fatalf("expected %v, got %v", rsa.ErrVerification, err)
 	}
 }
