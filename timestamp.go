@@ -126,7 +126,7 @@ func (sd *SignedData) TimestampsVerifications() []*TimestampVerification {
 // timestamp signature's associated certificate is verified using the provided
 // roots. UnsafeNoVerify may be specified to skip this verification. Nil may be
 // provided to use system roots. The certificates whose keys made the signatures
-// are returned regardless of success.
+// are returned.
 func (tv *TimestampVerification) Verify(timestampedSignatureCert *x509.Certificate, roots *x509.CertPool) ([]*x509.Certificate, error) {
 	hasTS := tv.getHasTimestamp()
 	tst := tv.getTimestampToken()

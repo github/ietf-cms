@@ -15,8 +15,7 @@ var UnsafeNoVerify = &x509.CertPool{}
 // Verify verifies the SingerInfos' signatures. Each signature's associated
 // certificate is verified using the provided roots. UnsafeNoVerify may be
 // specified to skip this verification. Nil may be provided to use system roots.
-// The certificates whose keys made the signatures are returned regardless of
-// success.
+// The certificates whose keys made the signatures are returned.
 func (sd *SignedData) Verify(roots *x509.CertPool) ([]*x509.Certificate, error) {
 	econtent, err := sd.psd.EncapContentInfo.EContentValue()
 	if err != nil {
@@ -33,7 +32,7 @@ func (sd *SignedData) Verify(roots *x509.CertPool) ([]*x509.Certificate, error) 
 // provided data message. Each signature's associated certificate is verified
 // using the provided roots. UnsafeNoVerify may be specified to skip this
 // verification. Nil may be provided to use system roots. The certificates whose
-// keys made the signatures are returned regardless of success.
+// keys made the signatures are returned.
 func (sd *SignedData) VerifyDetached(message []byte, roots *x509.CertPool) ([]*x509.Certificate, error) {
 	if sd.psd.EncapContentInfo.EContent.Bytes != nil {
 		return nil, errors.New("signature not detached")
