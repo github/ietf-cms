@@ -24,7 +24,7 @@ func TestAddTimestamps(t *testing.T) {
 	if len(tsvs) != 1 {
 		t.Fatal("expected one signerinfo")
 	}
-	if _, err := tsvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != nil {
+	if _, err := tsvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,7 +85,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	if !tvs[0].getHasTimestamp() {
 		t.Fatal("expected timestamp")
 	}
-	certs, err := tvs[0].Verify(leaf.Certificate, intermediate.ChainPool())
+	certs, err := tvs[0].Verify(leaf.Certificate, intermediateOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	})
 	sd = getTimestampedSignedData()
 	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != ErrTooOld {
+	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != ErrTooOld {
 		t.Fatalf("expected %v, got %v", ErrTooOld, err)
 	}
 
@@ -126,7 +126,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	})
 	sd = getTimestampedSignedData()
 	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != nil {
+	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,7 +143,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	})
 	sd = getTimestampedSignedData()
 	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != ErrTooNew {
+	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != ErrTooNew {
 		t.Fatalf("expected %v, got %v", ErrTooNew, err)
 	}
 
@@ -160,7 +160,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	})
 	sd = getTimestampedSignedData()
 	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != nil {
+	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -171,7 +171,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	})
 	sd = getTimestampedSignedData()
 	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != ErrTimestampMismatch {
+	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != ErrTimestampMismatch {
 		t.Fatalf("expected %v, got %v", ErrTimestampMismatch, err)
 	}
 
@@ -184,7 +184,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	})
 	sd = getTimestampedSignedData()
 	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != nil {
+	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != nil {
 		if _, ok := err.(x509.UnknownAuthorityError); !ok {
 			t.Fatalf("expected UnknownAuthorityError, got %v", err)
 		}
@@ -197,7 +197,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	})
 	sd = getTimestampedSignedData()
 	tvs = sd.TimestampsVerifications()
-	if _, err = tvs[0].Verify(leaf.Certificate, intermediate.ChainPool()); err != rsa.ErrVerification {
+	if _, err = tvs[0].Verify(leaf.Certificate, intermediateOpts); err != rsa.ErrVerification {
 		t.Fatalf("expected %v, got %v", rsa.ErrVerification, err)
 	}
 }

@@ -2,6 +2,7 @@ package cms
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/asn1"
 	"io"
 	"io/ioutil"
@@ -24,6 +25,10 @@ var (
 		fakeca.NotBefore(time.Now().Add(-time.Hour)),
 		fakeca.NotAfter(time.Now().Add(time.Hour)),
 	)
+
+	rootOpts         = x509.VerifyOptions{Roots: root.ChainPool()}
+	otherRootOpts    = x509.VerifyOptions{Roots: otherRoot.ChainPool()}
+	intermediateOpts = x509.VerifyOptions{Roots: intermediate.ChainPool()}
 
 	// fake timestamp authority setup
 	tsa = &testTSA{ident: intermediate.Issue()}

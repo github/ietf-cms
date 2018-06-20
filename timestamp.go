@@ -127,7 +127,7 @@ func (sd *SignedData) TimestampsVerifications() []*TimestampVerification {
 // roots. UnsafeNoVerify may be specified to skip this verification. Nil may be
 // provided to use system roots. The certificates whose keys made the signatures
 // are returned.
-func (tv *TimestampVerification) Verify(timestampedSignatureCert *x509.Certificate, roots *x509.CertPool) ([]*x509.Certificate, error) {
+func (tv *TimestampVerification) Verify(timestampedSignatureCert *x509.Certificate, opts x509.VerifyOptions) ([]*x509.Certificate, error) {
 	hasTS := tv.getHasTimestamp()
 	tst := tv.getTimestampToken()
 	tsti := tv.getTimestampTokenInfo()
@@ -142,7 +142,7 @@ func (tv *TimestampVerification) Verify(timestampedSignatureCert *x509.Certifica
 	}
 
 	// verify timestamp signature and certificate chain..
-	certs, err := tst.Verify(roots)
+	certs, err := tst.Verify(opts)
 	if err != nil {
 		return nil, err
 	}

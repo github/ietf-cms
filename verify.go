@@ -8,15 +8,13 @@ import (
 	"github.com/mastahyeti/cms/protocol"
 )
 
-// UnsafeNoVerify instructs Verify and VerifyDetached not to verify signature's
-// associated certificates against any set of trusted roots.
-var UnsafeNoVerify = &x509.CertPool{}
-
 // Verify verifies the SingerInfos' signatures. Each signature's associated
 // certificate is verified using the provided roots. UnsafeNoVerify may be
 // specified to skip this verification. Nil may be provided to use system roots.
 // The certificates whose keys made the signatures are returned.
-func (sd *SignedData) Verify(roots *x509.CertPool) ([]*x509.Certificate, error) {
+//
+// WARNING: this function doesn't do any revocation checking.
+func (sd *SignedData) Verify(opts x509.VerifyOptions) ([]*x509.Certificate, error) {
 	econtent, err := sd.psd.EncapContentInfo.EContentValue()
 	if err != nil {
 		return nil, err
@@ -25,7 +23,7 @@ func (sd *SignedData) Verify(roots *x509.CertPool) ([]*x509.Certificate, error) 
 		return nil, errors.New("detached signature")
 	}
 
-	return sd.verify(econtent, roots)
+	return sd.verify(econtent, opts)
 }
 
 // VerifyDetached verifies the SingerInfos' detached signatures over the
@@ -33,15 +31,17 @@ func (sd *SignedData) Verify(roots *x509.CertPool) ([]*x509.Certificate, error) 
 // using the provided roots. UnsafeNoVerify may be specified to skip this
 // verification. Nil may be provided to use system roots. The certificates whose
 // keys made the signatures are returned.
-func (sd *SignedData) VerifyDetached(message []byte, roots *x509.CertPool) ([]*x509.Certificate, error) {
+//
+// WARNING: this function doesn't do any revocation checking.
+func (sd *SignedData) VerifyDetached(message []byte, opts x509.VerifyOptions) ([]*x509.Certificate, error) {
 	if sd.psd.EncapContentInfo.EContent.Bytes != nil {
 		return nil, errors.New("signature not detached")
 	}
 
-	return sd.verify(message, roots)
+	return sd.verify(message, opts)
 }
 
-func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Certificate, error) {
+func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([]*x509.Certificate, error) {
 	if len(sd.psd.SignerInfos) == 0 {
 		return nil, protocol.ASN1Error{Message: "no signatures found"}
 	}
@@ -51,27 +51,15 @@ func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Cer
 		return nil, err
 	}
 
-	verifyOpts := x509.VerifyOptions{
-		Intermediates: x509.NewCertPool(),
-		Roots:         roots,
-		KeyUsages: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageEmailProtection,
-			x509.ExtKeyUsageCodeSigning,
-		},
+	if opts.Intermediates == nil {
+		opts.Intermediates = x509.NewCertPool()
 	}
 
 	for _, cert := range certs {
-		verifyOpts.Intermediates.AddCert(cert)
+		opts.Intermediates.AddCert(cert)
 	}
 
-	// Best effort attempt to gather all leaf certificates so we can return them
-	// regardless of success.
 	leafs := make([]*x509.Certificate, 0, len(sd.psd.SignerInfos))
-	for _, si := range sd.psd.SignerInfos {
-		if cert, err := si.FindCertificate(certs); err == nil {
-			leafs = append(leafs, cert)
-		}
-	}
 
 	for _, si := range sd.psd.SignerInfos {
 		var signedMessage []byte
@@ -132,6 +120,8 @@ func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Cer
 			return nil, err
 		}
 
+		leafs = append(leafs, cert)
+
 		algo := si.X509SignatureAlgorithm()
 		if algo == x509.UnknownSignatureAlgorithm {
 			return nil, protocol.ErrUnsupported
@@ -141,10 +131,8 @@ func (sd *SignedData) verify(econtent []byte, roots *x509.CertPool) ([]*x509.Cer
 			return nil, err
 		}
 
-		if roots != UnsafeNoVerify {
-			if _, err := cert.Verify(verifyOpts); err != nil {
-				return nil, err
-			}
+		if _, err := cert.Verify(opts); err != nil {
+			return nil, err
 		}
 	}
 

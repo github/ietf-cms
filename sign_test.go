@@ -17,7 +17,7 @@ func TestSign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = sd2.Verify(root.ChainPool()); err != nil {
+	if _, err = sd2.Verify(rootOpts); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,7 +55,7 @@ func TestSignDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = sd2.VerifyDetached(data, root.ChainPool()); err != nil {
+	if _, err = sd2.VerifyDetached(data, rootOpts); err != nil {
 		t.Fatal(err)
 	}
 
