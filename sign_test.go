@@ -4,6 +4,11 @@ import (
 	"testing"
 )
 
+var (
+	examplePrivateKey = leaf.PrivateKey
+	exampleChain      = leaf.Chain()
+)
+
 func TestSign(t *testing.T) {
 	data := []byte("hello, world!")
 

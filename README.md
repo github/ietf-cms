@@ -18,7 +18,7 @@ der, _ := cms.Sign(msg, cert, key)
 //
 
 sd, _ := ParseSignedData(der)
-if err := sd.Verify(); err != nil {
+if err := sd.Verify(x509.VerifyOptions{}); err != nil {
   panic(err)
 }
 ```
@@ -37,7 +37,7 @@ der, _ := cms.SignDetached(msg, cert, key)
 //
 
 sd, _ := ParseSignedData(der)
-if err := sd.VerifyDetached(msg); err != nil {
+if err := sd.VerifyDetached(msg, x509.VerifyOptions{}); err != nil {
   panic(err)
 }
 ```
@@ -55,20 +55,4 @@ derEncoded, _ := signedData.ToDER()
 io.Copy(os.Stdout, bytes.NewReader(derEncoded))
 ```
 
-Timestamps can also be verified:
-
-```go
-for _, tsv := range signedData.TimestampsVerifications() {
-  _, err := tsv.Verify(identity.Certificate, identity.ChainPool())
-
-  switch err {
-  case cms.ErrNoTimestamp:
-    // no timestamp on this signature
-  case nil:
-    // successful verification
-  default:
-    // failed to verify timestamp
-    panic(err)
-  }
-}
-```
+Verification functions implicitly verify timestamps as well. Without a timestamp, verification will fail if the certificate is no longer valid.
