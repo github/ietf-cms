@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	_ "crypto/sha1" // for crypto.SHA1
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -14,8 +15,6 @@ import (
 	"fmt"
 	"math/big"
 	"time"
-
-	_ "crypto/sha1" // for crypto.SHA1
 
 	"github.com/mastahyeti/cms/oid"
 )

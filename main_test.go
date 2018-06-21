@@ -2,6 +2,9 @@ package cms
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
 	"io"
@@ -10,14 +13,9 @@ import (
 	"net/http"
 	"time"
 
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-
 	"github.com/mastahyeti/cms/oid"
 	"github.com/mastahyeti/cms/protocol"
 	"github.com/mastahyeti/cms/timestamp"
-
 	"github.com/mastahyeti/fakeca"
 )
 
