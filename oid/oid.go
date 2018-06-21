@@ -4,6 +4,7 @@ package oid
 import (
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 )
 
@@ -104,4 +105,11 @@ var SignatureAlgorithms = map[string]map[string]x509.SignatureAlgorithm{
 		DigestAlgorithmSHA384.String(): x509.ECDSAWithSHA384,
 		DigestAlgorithmSHA512.String(): x509.ECDSAWithSHA512,
 	},
+}
+
+// PublicKeyAlgorithmToSignatureAlgorithm maps certificate public key
+// algorithms to CMS signature algorithms.
+var PublicKeyAlgorithmToSignatureAlgorithm = map[x509.PublicKeyAlgorithm]pkix.AlgorithmIdentifier{
+	x509.RSA:   pkix.AlgorithmIdentifier{Algorithm: SignatureAlgorithmRSA},
+	x509.ECDSA: pkix.AlgorithmIdentifier{Algorithm: SignatureAlgorithmECDSA},
 }

@@ -10,18 +10,26 @@ import (
 	"net/http"
 	"time"
 
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+
 	"github.com/mastahyeti/cms/oid"
 	"github.com/mastahyeti/cms/protocol"
 	"github.com/mastahyeti/cms/timestamp"
+
 	"github.com/mastahyeti/fakeca"
 )
 
 var (
 	// fake PKI setup
-	root         = fakeca.New(fakeca.IsCA)
-	otherRoot    = fakeca.New(fakeca.IsCA)
-	intermediate = root.Issue(fakeca.IsCA)
-	leaf         = intermediate.Issue(
+	root      = fakeca.New(fakeca.IsCA)
+	otherRoot = fakeca.New(fakeca.IsCA)
+
+	intermediateKey, _ = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	intermediate       = root.Issue(fakeca.IsCA, fakeca.PrivateKey(intermediateKey))
+
+	leaf = intermediate.Issue(
 		fakeca.NotBefore(time.Now().Add(-time.Hour)),
 		fakeca.NotAfter(time.Now().Add(time.Hour)),
 	)

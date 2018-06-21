@@ -4,6 +4,8 @@ package protocol
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -36,6 +38,7 @@ var (
 	// different type.
 	ErrWrongType = errors.New("cms/protocol: wrong choice or any type")
 
+	// ErrNoCertificate is returned when a requested certificate cannot be found.
 	ErrNoCertificate = errors.New("no certificate found")
 
 	// ErrUnsupported is returned when an unsupported type or version
@@ -614,22 +617,18 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 		return err
 	}
 
-	digestAlgorithm := oid.SignatureAlgorithmToDigestAlgorithm[cert.SignatureAlgorithm]
-	if digestAlgorithm == nil {
-		return ErrUnsupported
-	}
-
-	signatureAlgorithm := oid.SignatureAlgorithmToSignatureAlgorithm[cert.SignatureAlgorithm]
-	if signatureAlgorithm == nil {
-		return ErrUnsupported
+	digestAlgorithm := digestAlgorithmForPublicKey(pub)
+	signatureAlgorithm, ok := oid.PublicKeyAlgorithmToSignatureAlgorithm[cert.PublicKeyAlgorithm]
+	if !ok {
+		return errors.New("unsupported certificate public key algorithm")
 	}
 
 	si := SignerInfo{
 		Version:            1,
 		SID:                sid,
-		DigestAlgorithm:    pkix.AlgorithmIdentifier{Algorithm: digestAlgorithm},
+		DigestAlgorithm:    digestAlgorithm,
 		SignedAttrs:        nil,
-		SignatureAlgorithm: pkix.AlgorithmIdentifier{Algorithm: signatureAlgorithm},
+		SignatureAlgorithm: signatureAlgorithm,
 		Signature:          nil,
 		UnsignedAttrs:      nil,
 	}
@@ -649,7 +648,6 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 		return err
 	}
 	md := hash.New()
-	// TEST
 	if _, err = md.Write(content); err != nil {
 		return err
 	}
@@ -683,6 +681,21 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 	sd.SignerInfos = append(sd.SignerInfos, si)
 
 	return nil
+}
+
+// algorithmsForPublicKey takes an opinionated stance on what algorithms to use
+// for the given public key.
+func digestAlgorithmForPublicKey(pub crypto.PublicKey) pkix.AlgorithmIdentifier {
+	if ecPub, ok := pub.(*ecdsa.PublicKey); ok {
+		switch ecPub.Curve {
+		case elliptic.P384():
+			return pkix.AlgorithmIdentifier{Algorithm: oid.DigestAlgorithmSHA384}
+		case elliptic.P521():
+			return pkix.AlgorithmIdentifier{Algorithm: oid.DigestAlgorithmSHA512}
+		}
+	}
+
+	return pkix.AlgorithmIdentifier{Algorithm: oid.DigestAlgorithmSHA256}
 }
 
 // addCertificate adds a *x509.Certificate.
