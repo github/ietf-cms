@@ -7,7 +7,32 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/mastahyeti/cms/protocol"
 )
+
+func verifyOptionsForSignedData(sd *SignedData) (opts x509.VerifyOptions) {
+	certs, err := sd.psd.X509Certificates()
+	if err != nil {
+		panic(err)
+	}
+
+	// add self-signed cert as trusted root
+	if len(certs) == 1 {
+		opts.Roots = x509.NewCertPool()
+		opts.Roots.AddCert(certs[0])
+	}
+
+	// trust signing time
+	signingTime, err := sd.psd.SignerInfos[0].GetSigningTimeAttribute()
+	if err != nil {
+		panic(err)
+	}
+
+	opts.CurrentTime = signingTime
+
+	return
+}
 
 func TestVerify(t *testing.T) {
 	sd, err := ParseSignedData(fixtureSignatureOne)
@@ -15,7 +40,7 @@ func TestVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sd.Verify(UnsafeNoVerify); err != nil {
+	if _, err := sd.Verify(verifyOptionsForSignedData(sd)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -26,7 +51,7 @@ func TestVerifyGPGSMAttached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = sd.Verify(UnsafeNoVerify); err != nil {
+	if _, err = sd.Verify(verifyOptionsForSignedData(sd)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -45,7 +70,7 @@ func TestVerifyGPGSMDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err != nil {
+	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), verifyOptionsForSignedData(sd)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -56,8 +81,8 @@ func TestVerifyGPGSMNoCerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), UnsafeNoVerify); err.Error() != "no certificates" {
-		t.Fatal(err)
+	if _, err := sd.VerifyDetached([]byte("hello, world!\n"), x509.VerifyOptions{}); err != protocol.ErrNoCertificate {
+		t.Fatalf("expected %v, got %v", protocol.ErrNoCertificate, err)
 	}
 }
 
@@ -67,7 +92,7 @@ func TestVerifyOpenSSLAttached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sd.Verify(UnsafeNoVerify); err != nil {
+	if _, err := sd.Verify(verifyOptionsForSignedData(sd)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -78,7 +103,7 @@ func TestVerifyOpenSSLDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sd.VerifyDetached([]byte("hello, world!"), UnsafeNoVerify); err != nil {
+	if _, err := sd.VerifyDetached([]byte("hello, world!"), verifyOptionsForSignedData(sd)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -89,7 +114,9 @@ func TestVerifyOutlookDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := sd.VerifyDetached(fixtureMessageOutlookDetached, UnsafeNoVerify); err != nil {
+	opts := x509.VerifyOptions{KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}
+
+	if _, err := sd.VerifyDetached(fixtureMessageOutlookDetached, opts); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -99,7 +126,7 @@ func TestVerifyChain(t *testing.T) {
 	sd, _ := ParseSignedData(ber)
 
 	// good root
-	certs, err := sd.Verify(root.ChainPool())
+	certs, err := sd.Verify(rootOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,18 +135,24 @@ func TestVerifyChain(t *testing.T) {
 	}
 
 	// bad root
-	if _, err = sd.Verify(otherRoot.ChainPool()); err == nil {
-		t.Fatal("expected error")
+	if _, err = sd.Verify(otherRootOpts); err != nil {
+		if _, isX509Err := err.(x509.UnknownAuthorityError); !isX509Err {
+			t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
+		}
 	}
 
 	// system root
-	if _, err = sd.Verify(nil); err == nil {
-		t.Fatal("expected error")
+	if _, err = sd.Verify(x509.VerifyOptions{}); err != nil {
+		if _, isX509Err := err.(x509.UnknownAuthorityError); !isX509Err {
+			t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
+		}
 	}
 
 	// no root
-	if _, err = sd.Verify(x509.NewCertPool()); err == nil {
-		t.Fatal("expected error")
+	if _, err = sd.Verify(x509.VerifyOptions{Roots: x509.NewCertPool()}); err != nil {
+		if _, isX509Err := err.(x509.UnknownAuthorityError); !isX509Err {
+			t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
+		}
 	}
 }
 
