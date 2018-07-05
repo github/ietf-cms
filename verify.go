@@ -8,34 +8,13 @@ import (
 	"github.com/mastahyeti/cms/protocol"
 )
 
-func getLeafs(chains [][][]*x509.Certificate, inputErr error) (leafs []*x509.Certificate, err error) {
-	if err = inputErr; err != nil {
-		return
-	}
-	leafs = make([]*x509.Certificate, len(chains))
-	for i, chain := range chains {
-		leafs[i] = chain[i][0]
-	}
-	return
-}
-
-
 // Verify verifies the SingerInfos' signatures. Each signature's associated
 // certificate is verified using the provided roots. UnsafeNoVerify may be
 // specified to skip this verification. Nil may be provided to use system roots.
-// The certificates whose keys made the signatures are returned.
+// The full chains for the certificates whose keys made the signatures are returned.
 //
 // WARNING: this function doesn't do any revocation checking.
-func (sd *SignedData) Verify(opts x509.VerifyOptions) ([]*x509.Certificate, error) {
-	return getLeafs(sd.VerifyFull(opts))
-}
-
-// VerifyFull does the same process than Verify, but it returns the full certificate chains used
-// to verify each of the signatures. This way you can use this information in case you want to 
-// validate the revocation status of the certificates in the chain
-//
-// WARNING: As Verify, this function does not do any revocation checking
-func (sd *SignedData) VerifyFull(opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
+func (sd *SignedData) Verify(opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
 	econtent, err := sd.psd.EncapContentInfo.EContentValue()
 	if err != nil {
 		return nil, err
@@ -43,7 +22,7 @@ func (sd *SignedData) VerifyFull(opts x509.VerifyOptions) ([][][]*x509.Certifica
 	if econtent == nil {
 		return nil, errors.New("detached signature")
 	}
-	
+
 	return sd.verify(econtent, opts)
 }
 
@@ -54,21 +33,12 @@ func (sd *SignedData) VerifyFull(opts x509.VerifyOptions) ([][][]*x509.Certifica
 // keys made the signatures are returned.
 //
 // WARNING: this function doesn't do any revocation checking.
-func (sd *SignedData) VerifyDetached(message []byte, opts x509.VerifyOptions) ([]*x509.Certificate, error) {
-	return getLeafs(sd.VerifyDetachedFull(message, opts))
-}
-
-// As VerifyFull, VerifyDetachedFull does the same process than VerifyDetached, but it returns the full chains instead
-// of just the leaf certificates.
-//
-// WARNING: this function doesn't do any revocation checking.
-func (sd *SignedData) VerifyDetachedFull(message []byte, opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
+func (sd *SignedData) VerifyDetached(message []byte, opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
 	if sd.psd.EncapContentInfo.EContent.Bytes != nil {
 		return nil, errors.New("signature not detached")
 	}
 	return sd.verify(message, opts)
 }
-
 
 func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
 	if len(sd.psd.SignerInfos) == 0 {
