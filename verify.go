@@ -11,10 +11,10 @@ import (
 // Verify verifies the SingerInfos' signatures. Each signature's associated
 // certificate is verified using the provided roots. UnsafeNoVerify may be
 // specified to skip this verification. Nil may be provided to use system roots.
-// The certificates whose keys made the signatures are returned.
+// The full chains for the certificates whose keys made the signatures are returned.
 //
 // WARNING: this function doesn't do any revocation checking.
-func (sd *SignedData) Verify(opts x509.VerifyOptions) ([]*x509.Certificate, error) {
+func (sd *SignedData) Verify(opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
 	econtent, err := sd.psd.EncapContentInfo.EContentValue()
 	if err != nil {
 		return nil, err
@@ -33,15 +33,14 @@ func (sd *SignedData) Verify(opts x509.VerifyOptions) ([]*x509.Certificate, erro
 // keys made the signatures are returned.
 //
 // WARNING: this function doesn't do any revocation checking.
-func (sd *SignedData) VerifyDetached(message []byte, opts x509.VerifyOptions) ([]*x509.Certificate, error) {
+func (sd *SignedData) VerifyDetached(message []byte, opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
 	if sd.psd.EncapContentInfo.EContent.Bytes != nil {
 		return nil, errors.New("signature not detached")
 	}
-
 	return sd.verify(message, opts)
 }
 
-func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([]*x509.Certificate, error) {
+func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
 	if len(sd.psd.SignerInfos) == 0 {
 		return nil, protocol.ASN1Error{Message: "no signatures found"}
 	}
@@ -59,7 +58,7 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([]*x509.
 		opts.Intermediates.AddCert(cert)
 	}
 
-	leafs := make([]*x509.Certificate, 0, len(sd.psd.SignerInfos))
+	chains := make([][][]*x509.Certificate, 0, len(sd.psd.SignerInfos))
 
 	for _, si := range sd.psd.SignerInfos {
 		var signedMessage []byte
@@ -120,8 +119,6 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([]*x509.
 			return nil, err
 		}
 
-		leafs = append(leafs, cert)
-
 		algo := si.X509SignatureAlgorithm()
 		if algo == x509.UnknownSignatureAlgorithm {
 			return nil, protocol.ErrUnsupported
@@ -158,11 +155,13 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([]*x509.
 			}
 		}
 
-		if _, err := cert.Verify(optsCopy); err != nil {
+		if chain, err := cert.Verify(optsCopy); err != nil {
 			return nil, err
+		} else {
+			chains = append(chains, chain)
 		}
 	}
 
 	// OK
-	return leafs, nil
+	return chains, nil
 }

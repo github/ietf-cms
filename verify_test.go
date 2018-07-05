@@ -122,16 +122,24 @@ func TestVerifyOutlookDetached(t *testing.T) {
 }
 
 func TestVerifyChain(t *testing.T) {
+	signerChain := leaf.Chain()
 	ber, _ := Sign([]byte("hi"), leaf.Chain(), leaf.PrivateKey)
 	sd, _ := ParseSignedData(ber)
 
 	// good root
-	certs, err := sd.Verify(rootOpts)
+	chains, err := sd.Verify(rootOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !certs[0].Equal(leaf.Certificate) {
-		t.Fatal("bad cert")
+
+	if len(chains) != 1 || len(chains[0]) != 1 || len(chains[0][0]) != len(signerChain) {
+		t.Fatal("bad chain")
+	}
+
+	for i, c := range signerChain {
+		if !chains[0][0][i].Equal(c) {
+			t.Fatalf("bad cert: %d", i)
+		}
 	}
 
 	// bad root
