@@ -11,7 +11,8 @@ import (
 // Verify verifies the SingerInfos' signatures. Each signature's associated
 // certificate is verified using the provided roots. UnsafeNoVerify may be
 // specified to skip this verification. Nil may be provided to use system roots.
-// The full chains for the certificates whose keys made the signatures are returned.
+// The full chains for the certificates whose keys made the signatures are
+// returned.
 //
 // WARNING: this function doesn't do any revocation checking.
 func (sd *SignedData) Verify(opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {
@@ -29,8 +30,8 @@ func (sd *SignedData) Verify(opts x509.VerifyOptions) ([][][]*x509.Certificate, 
 // VerifyDetached verifies the SingerInfos' detached signatures over the
 // provided data message. Each signature's associated certificate is verified
 // using the provided roots. UnsafeNoVerify may be specified to skip this
-// verification. Nil may be provided to use system roots. The certificates whose
-// keys made the signatures are returned.
+// verification. Nil may be provided to use system roots. The full chains for
+// the certificates whose keys made the signatures are returned.
 //
 // WARNING: this function doesn't do any revocation checking.
 func (sd *SignedData) VerifyDetached(message []byte, opts x509.VerifyOptions) ([][][]*x509.Certificate, error) {

@@ -18,7 +18,7 @@ der, _ := cms.Sign(msg, cert, key)
 //
 
 sd, _ := ParseSignedData(der)
-if err := sd.Verify(x509.VerifyOptions{}); err != nil {
+if err, _ := sd.Verify(x509.VerifyOptions{}); err != nil {
   panic(err)
 }
 ```
@@ -37,7 +37,7 @@ der, _ := cms.SignDetached(msg, cert, key)
 //
 
 sd, _ := ParseSignedData(der)
-if err := sd.VerifyDetached(msg, x509.VerifyOptions{}); err != nil {
+if err, _ := sd.VerifyDetached(msg, x509.VerifyOptions{}); err != nil {
   panic(err)
 }
 ```
