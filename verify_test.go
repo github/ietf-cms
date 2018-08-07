@@ -11,6 +11,27 @@ import (
 	"github.com/mastahyeti/cms/protocol"
 )
 
+func ExampleSignedData() {
+	data := []byte("hello, world!")
+
+	// Wrap the data in a CMS SignedData structure and sign it with our key.
+	signedDataDER, err := Sign(data, exampleChain, examplePrivateKey)
+	if err != nil {
+		panic(err)
+	}
+
+	// Re-parse the encoded SignedData structure.
+	signedData, err := ParseSignedData(signedDataDER)
+	if err != nil {
+		panic(err)
+	}
+
+	// Verify the SignedData's signature.
+	if _, err = signedData.Verify(x509.VerifyOptions{Roots: root.ChainPool()}); err != nil {
+		panic(err)
+	}
+}
+
 func verifyOptionsForSignedData(sd *SignedData) (opts x509.VerifyOptions) {
 	certs, err := sd.psd.X509Certificates()
 	if err != nil {
