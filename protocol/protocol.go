@@ -461,7 +461,11 @@ func (si SignerInfo) X509SignatureAlgorithm() x509.SignatureAlgorithm {
 		digestOID = si.DigestAlgorithm.Algorithm.String()
 	)
 
-	return oid.PublicKeyAndDigestAlgorithmToX509SignatureAlgorithm[sigOID][digestOID]
+	if m, ok := oid.PublicKeyAndDigestAlgorithmToX509SignatureAlgorithm[sigOID]; ok {
+		return m[digestOID]
+	}
+
+	return oid.SignatureAlgorithmToX509SignatureAlgorithm[sigOID]
 }
 
 // GetContentTypeAttribute gets the signed ContentType attribute from the

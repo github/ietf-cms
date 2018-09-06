@@ -109,6 +109,20 @@ var PublicKeyAndDigestAlgorithmToX509SignatureAlgorithm = map[string]map[string]
 	},
 }
 
+// SignatureAlgorithmToX509SignatureAlgorithm maps signature algorithm OIDs to
+// x509.SignatureAlgorithm values.
+var SignatureAlgorithmToX509SignatureAlgorithm = map[string]x509.SignatureAlgorithm{
+	SignatureAlgorithmSHA1WithRSA.String():     x509.SHA1WithRSA,
+	SignatureAlgorithmMD5WithRSA.String():      x509.MD5WithRSA,
+	SignatureAlgorithmSHA256WithRSA.String():   x509.SHA256WithRSA,
+	SignatureAlgorithmSHA384WithRSA.String():   x509.SHA384WithRSA,
+	SignatureAlgorithmSHA512WithRSA.String():   x509.SHA512WithRSA,
+	SignatureAlgorithmECDSAWithSHA1.String():   x509.ECDSAWithSHA1,
+	SignatureAlgorithmECDSAWithSHA256.String(): x509.ECDSAWithSHA256,
+	SignatureAlgorithmECDSAWithSHA384.String(): x509.ECDSAWithSHA384,
+	SignatureAlgorithmECDSAWithSHA512.String(): x509.ECDSAWithSHA512,
+}
+
 // X509PublicKeyAlgorithmToPKIXAlgorithmIdentifier maps certificate public key
 // algorithms to CMS signature algorithms.
 var X509PublicKeyAlgorithmToPKIXAlgorithmIdentifier = map[x509.PublicKeyAlgorithm]pkix.AlgorithmIdentifier{
