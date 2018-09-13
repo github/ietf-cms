@@ -312,6 +312,17 @@ func (attrs Attributes) GetValues(oid asn1.ObjectIdentifier) ([]AnySet, error) {
 	return vals, nil
 }
 
+// HasAttribute checks if an attribute is present.
+func (attrs Attributes) HasAttribute(oid asn1.ObjectIdentifier) bool {
+	for _, attr := range attrs {
+		if attr.Type.Equal(oid) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // IssuerAndSerialNumber ::= SEQUENCE {
 // 	issuer Name,
 // 	serialNumber CertificateSerialNumber }
@@ -505,6 +516,9 @@ func (si SignerInfo) GetMessageDigestAttribute() ([]byte, error) {
 func (si SignerInfo) GetSigningTimeAttribute() (time.Time, error) {
 	var t time.Time
 
+	if !si.SignedAttrs.HasAttribute(oid.AttributeSigningTime) {
+		return t, nil
+	}
 	rv, err := si.SignedAttrs.GetOnlyAttributeValueBytes(oid.AttributeSigningTime)
 	if err != nil {
 		return t, err
