@@ -211,6 +211,48 @@ func TestContentTypeAttribute(t *testing.T) {
 	}
 }
 
+func TestSigningTimeAttribute(t *testing.T) {
+	ci, _ := ParseContentInfo(fixtureSignatureOpenSSLAttached)
+	sd, _ := ci.SignedDataContent()
+	si := sd.SignerInfos[0]
+
+	oldAttrVal, err := si.GetSigningTimeAttribute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var oldAttr Attribute
+	for _, attr := range si.SignedAttrs {
+		if attr.Type.Equal(oid.AttributeSigningTime) {
+			oldAttr = attr
+			break
+		}
+	}
+
+	newAttr, err := NewAttribute(oid.AttributeSigningTime, oldAttrVal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldAttr.RawValue.Bytes, newAttr.RawValue.Bytes) {
+		t.Fatal("raw value mismatch")
+	}
+
+	oldDER, err := asn1.Marshal(oldAttr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newDER, err := asn1.Marshal(newAttr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(oldDER, newDER) {
+		t.Fatal("der mismatch")
+	}
+}
+
 func TestIssuerAndSerialNumber(t *testing.T) {
 	ci, _ := ParseContentInfo(fixtureSignatureOpenSSLAttached)
 	sd, _ := ci.SignedDataContent()

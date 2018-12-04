@@ -670,6 +670,10 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 	}
 
 	// Build our SignedAttributes
+	stAttr, err := NewAttribute(oid.AttributeSigningTime, time.Now())
+	if err != nil {
+		return err
+	}
 	mdAttr, err := NewAttribute(oid.AttributeMessageDigest, md.Sum(nil))
 	if err != nil {
 		return err
@@ -678,7 +682,8 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 	if err != nil {
 		return err
 	}
-	si.SignedAttrs = append(si.SignedAttrs, mdAttr, ctAttr)
+
+	si.SignedAttrs = append(si.SignedAttrs, stAttr, mdAttr, ctAttr)
 
 	// Signature is over the marshaled signed attributes
 	sm, err := si.SignedAttrs.MarshaledForSigning()
