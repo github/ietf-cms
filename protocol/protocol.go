@@ -40,10 +40,6 @@ var (
 	// ErrNoCertificate is returned when a requested certificate cannot be found.
 	ErrNoCertificate = errors.New("no certificate found")
 
-	// ErrUnsupported is returned when an unsupported type or version
-	// is encountered.
-	ErrUnsupported = ASN1Error{"unsupported type or version"}
-
 	// ErrTrailingData is returned when extra data is found after parsing an ASN.1
 	// structure.
 	ErrTrailingData = ASN1Error{"unexpected trailing data"}
@@ -422,7 +418,7 @@ func (si SignerInfo) FindCertificate(certs []*x509.Certificate) (*x509.Certifica
 			}
 		}
 	default:
-		return nil, ErrUnsupported
+		return nil, ASN1Error{fmt.Sprintf("Unsupported signer version: %d", si.Version)}
 	}
 
 	return nil, ErrNoCertificate
@@ -457,8 +453,11 @@ func (si SignerInfo) subjectKeyIdentifierSID() ([]byte, error) {
 func (si SignerInfo) Hash() (crypto.Hash, error) {
 	algo := si.DigestAlgorithm.Algorithm.String()
 	hash := oid.DigestAlgorithmToCryptoHash[algo]
-	if hash == 0 || !hash.Available() {
-		return 0, ErrUnsupported
+	if hash == 0 {
+		return 0, ASN1Error{(fmt.Sprintf("Algorithm %s not recognized", algo))}
+	}
+	if !hash.Available() {
+		return 0, ASN1Error{fmt.Sprintf("Hash not available for algorithm %s", algo)}
 	}
 
 	return hash, nil
@@ -466,17 +465,21 @@ func (si SignerInfo) Hash() (crypto.Hash, error) {
 
 // X509SignatureAlgorithm gets the x509.SignatureAlgorithm that should be used
 // for verifying this SignerInfo's signature.
-func (si SignerInfo) X509SignatureAlgorithm() x509.SignatureAlgorithm {
+func (si SignerInfo) X509SignatureAlgorithm() (x509.SignatureAlgorithm, error) {
 	var (
 		sigOID    = si.SignatureAlgorithm.Algorithm.String()
 		digestOID = si.DigestAlgorithm.Algorithm.String()
 	)
-
 	if sa := oid.SignatureAlgorithmToX509SignatureAlgorithm[sigOID]; sa != x509.UnknownSignatureAlgorithm {
-		return sa
+		return sa, nil
 	}
 
-	return oid.PublicKeyAndDigestAlgorithmToX509SignatureAlgorithm[sigOID][digestOID]
+	sigAlgo := oid.PublicKeyAndDigestAlgorithmToX509SignatureAlgorithm[sigOID][digestOID]
+	var err error
+	if sigAlgo == x509.UnknownSignatureAlgorithm {
+		err = fmt.Errorf("Unsupported signature algorithm with OID: %s", sigOID)
+	}
+	return sigAlgo, err
 }
 
 // GetContentTypeAttribute gets the signed ContentType attribute from the
@@ -769,7 +772,9 @@ func (sd *SignedData) X509Certificates() ([]*x509.Certificate, error) {
 	certs := make([]*x509.Certificate, 0, len(sd.Certificates))
 	for _, raw := range sd.Certificates {
 		if raw.Class != asn1.ClassUniversal || raw.Tag != asn1.TagSequence {
-			return nil, ErrUnsupported
+			return nil, ASN1Error{
+				Message: fmt.Sprintf("Unsupported Certificate type."),
+			}
 		}
 
 		x509, err := x509.ParseCertificate(raw.FullBytes)

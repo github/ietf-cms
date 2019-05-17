@@ -125,9 +125,9 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 			return nil, err
 		}
 
-		algo := si.X509SignatureAlgorithm()
-		if algo == x509.UnknownSignatureAlgorithm {
-			return nil, protocol.ErrUnsupported
+		algo, err := si.X509SignatureAlgorithm()
+		if err != nil {
+			return nil, protocol.ASN1Error{Message: err.Error()}
 		}
 
 		if err := cert.CheckSignature(algo, signedMessage, si.Signature); err != nil {

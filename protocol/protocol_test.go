@@ -354,8 +354,8 @@ func testParseContentInfo(t *testing.T, ber []byte) {
 			t.Fatal("nil/empty message digest attribute")
 		}
 
-		if algo := si.X509SignatureAlgorithm(); algo == x509.UnknownSignatureAlgorithm {
-			t.Fatalf("unknown signature algorithm")
+		if _, err := si.X509SignatureAlgorithm(); err != nil {
+			t.Fatalf(err.Error())
 		}
 
 		var nilTime time.Time

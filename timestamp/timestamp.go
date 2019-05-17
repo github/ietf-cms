@@ -363,11 +363,15 @@ type MessageImprint struct {
 func NewMessageImprint(hash crypto.Hash, r io.Reader) (MessageImprint, error) {
 	digestAlgorithm := oid.CryptoHashToDigestAlgorithm[hash]
 	if len(digestAlgorithm) == 0 {
-		return MessageImprint{}, protocol.ErrUnsupported
+		return MessageImprint{}, protocol.ASN1Error{
+			Message: fmt.Sprintf("Could not convert hash %v to digest algorithm", hash),
+		}
 	}
 
 	if !hash.Available() {
-		return MessageImprint{}, protocol.ErrUnsupported
+		return MessageImprint{}, protocol.ASN1Error{
+			Message: fmt.Sprintf("Hash %v not available", hash),
+		}
 	}
 	h := hash.New()
 	if _, err := io.Copy(h, r); err != nil {
@@ -385,8 +389,15 @@ func NewMessageImprint(hash crypto.Hash, r io.Reader) (MessageImprint, error) {
 func (mi MessageImprint) Hash() (crypto.Hash, error) {
 	algo := mi.HashAlgorithm.Algorithm.String()
 	hash := oid.DigestAlgorithmToCryptoHash[algo]
-	if hash == 0 || !hash.Available() {
-		return 0, protocol.ErrUnsupported
+	if hash == 0 {
+		return 0, protocol.ASN1Error{
+			Message: (fmt.Sprintf("Algorithm %s not recognized", algo)),
+		}
+	}
+	if !hash.Available() {
+		return 0, protocol.ASN1Error{
+			Message: fmt.Sprintf("Hash not available for algorithm %s", algo),
+		}
 	}
 
 	return hash, nil

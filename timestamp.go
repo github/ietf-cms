@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"fmt"
 
 	"github.com/mastahyeti/cms/oid"
 	"github.com/mastahyeti/cms/protocol"
@@ -94,7 +95,9 @@ func getTimestamp(si protocol.SignerInfo, opts x509.VerifyOptions) (timestamp.In
 	}
 
 	if tsti.Version != 1 {
-		return timestamp.Info{}, protocol.ErrUnsupported
+		return timestamp.Info{}, protocol.ASN1Error{
+			Message: fmt.Sprintf("Timestamp version %d not supported", tsti.Version),
+		}
 	}
 
 	// verify timestamp signature and certificate chain..
