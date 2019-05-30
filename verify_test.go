@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"io"
 	"strings"
 	"testing"
@@ -198,6 +199,89 @@ func TestVerifyChain(t *testing.T) {
 		if _, isX509Err := err.(x509.UnknownAuthorityError); !isX509Err {
 			t.Fatalf("expected x509.UnknownAuthorityError, got %v", err)
 		}
+	}
+}
+
+func TestVerifyDSAWithSHA1(t *testing.T) {
+
+	// Created with the following openssl commands:
+	// openssl dsaparam -out dsakey.pem -genkey 1024
+	// openssl req -key dsakey.pem -new -x509 -days 365000 -out dsa.crt -sha1 -subj "/CN=foo.com"
+	// This creates a cert which is valid for 1000 years
+	const publicCert string = `
+-----BEGIN CERTIFICATE-----
+MIICWjCCAhoCCQCNGgCUlB6gszAJBgcqhkjOOAQDMBIxEDAOBgNVBAMMB2Zvby5j
+b20wIBcNMTkwNTI5MDMzNzUyWhgPMzAxODA5MjkwMzM3NTJaMBIxEDAOBgNVBAMM
+B2Zvby5jb20wggG2MIIBKwYHKoZIzjgEATCCAR4CgYEAyoyaU2206Zuu9MDfQ1gM
+Uba4Iu3j9EBWSSYiFjHS93Y2RVGqkNGHqNtLJ1nXANINqjnTP8RxnsccRejhX7C5
+xVAlfsKSvJpRO1idp0SA8tVItpyHNjY175SYFYcg6elr1KQxfd41o/brruo915fs
+BXxl0S3261INjJJ64Ybn+CkCFQDa9pKFl6/S1OObPF3XeemwQVSW8QKBgByeV3hw
+YGzpdIu+/6iMYAvkNAYVBTfwuYd5Oa1Le2m9detLgcHg/0/q8kD5YafNPKYVAg1N
+aD+lLYEkbFuOJo00Pk1zrTQtKkrfbU9EVxd/6/XCrsFAVLl+39Q3vDEEX3tLjf+m
+r860lPYoC0+HRj+RGJiYmMqeydsV4N8gtRZbA4GEAAKBgGp8JeErPlZ7l56NG+mL
+XJxpVB7Vb0rqM/B0r5kMX/a0Nw7oa0Nehy2BJyvI3zREz2BYJd4RGsIq8cCts2yO
+zh8PgBUSNAnEEivfxRV+LivovAjVXqsr53WolzvkCOlxeX15a9SINSDNkphqsZrW
+zYTE+BOvUEbM0lM0273nAa4KMAkGByqGSM44BAMDLwAwLAIUURvdNGP0kzOJh79x
+ZFtQRP+6EQoCFAmd0+Tig4/yNQ0eSnQEFwEMQiD1
+-----END CERTIFICATE-----
+`
+
+	// Signed pkcs7 doc created using above cert and the following commands:
+	// printf 'Hello, World!' > hello.txt
+	// openssl smime -sign -in hello.txt -nodetach -nocerts -outform pem -md sha1 -signer dsa.crt -inkey dsakey.pem
+	const pkcs7Doc string = `
+-----BEGIN PKCS7-----
+MIIBvgYJKoZIhvcNAQcCoIIBrzCCAasCAQExCzAJBgUrDgMCGgUAMBwGCSqGSIb3
+DQEHAaAPBA1IZWxsbywgV29ybGQhMYIBeTCCAXUCAQEwHzASMRAwDgYDVQQDDAdm
+b28uY29tAgkAjRoAlJQeoLMwCQYFKw4DAhoFAKCCAQcwGAYJKoZIhvcNAQkDMQsG
+CSqGSIb3DQEHATAcBgkqhkiG9w0BCQUxDxcNMTkwNTI5MDM1OTU4WjAjBgkqhkiG
+9w0BCQQxFgQUCgqfKmdylCVXq1NV12r0Qvj2XgEwgacGCSqGSIb3DQEJDzGBmTCB
+ljALBglghkgBZQMEASowCAYGKoUDAgIJMAoGCCqFAwcBAQICMAoGCCqFAwcBAQID
+MAgGBiqFAwICFTALBglghkgBZQMEARYwCwYJYIZIAWUDBAECMAoGCCqGSIb3DQMH
+MA4GCCqGSIb3DQMCAgIAgDANBggqhkiG9w0DAgIBQDAHBgUrDgMCBzANBggqhkiG
+9w0DAgIBKDAJBgcqhkjOOAQDBC4wLAIUXZ2aaGVyPDzpb1svc0ruE3qCUzsCFCNw
+F1Al5pA+giJh15T7Uu+p5O0J
+-----END PKCS7-----
+`
+
+	pkcs7CertPEM, _ := pem.Decode([]byte(publicCert))
+	if pkcs7CertPEM == nil {
+		t.Fatal("failed to parse certificate PEM")
+	}
+	pkcs7Cert, err := x509.ParseCertificate(pkcs7CertPEM.Bytes)
+	if err != nil {
+		t.Fatalf("failed to parse certificate: " + err.Error())
+	}
+
+	pkcs7Certs := []*x509.Certificate{pkcs7Cert}
+	pkcs7VerifyOptions := x509.VerifyOptions{
+		Roots:     x509.NewCertPool(),
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	}
+	pkcs7VerifyOptions.Roots.AddCert(pkcs7Cert)
+
+	derRequest, _ := pem.Decode([]byte(pkcs7Doc))
+	if derRequest == nil {
+		t.Fatalf("failed to parse id doc PEM: %s", pkcs7Doc)
+	}
+	sd, err := ParseSignedData([]byte(derRequest.Bytes))
+	if err != nil {
+		t.Fatalf("Error parsing pkcs7 document: %s, err: %v", pkcs7Doc, err)
+	}
+
+	sd.SetCertificates(pkcs7Certs)
+	_, err = sd.Verify(pkcs7VerifyOptions)
+	if err != nil {
+		t.Fatalf("Error verifying signing request: %v, err %v", *sd, err)
+	}
+	data, err := sd.GetData()
+	if err != nil {
+		t.Fatalf("Error getting data from pkcs7 document %s, err %v", pkcs7Doc, err)
+	}
+
+	expectedData := "Hello, World!"
+	if string(data) != expectedData {
+		t.Fatalf("Expected data: %s Actual Data: %s", expectedData, data)
 	}
 }
 
