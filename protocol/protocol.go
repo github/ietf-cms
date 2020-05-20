@@ -151,8 +151,8 @@ func (eci EncapsulatedContentInfo) EContentValue() ([]byte, error) {
 	} else if len(rest) > 0 {
 		return nil, ErrTrailingData
 	}
-	if octets.Class != asn1.ClassUniversal || octets.Tag != asn1.TagOctetString {
-		return nil, ASN1Error{"bad tag or class"}
+	if octets.Class != asn1.ClassUniversal {
+		return nil, ASN1Error{"bad class"}
 	}
 
 	// While we already tried converting BER to DER, we didn't take constructed
@@ -161,9 +161,9 @@ func (eci EncapsulatedContentInfo) EContentValue() ([]byte, error) {
 	// sub-strings that are joined together to get the actual value. Gpgsm uses
 	// a constructed OCTET STRING for the EContent, so we have to manually decode
 	// it here.
-	var value []byte
-	if octets.IsCompound {
+	if octets.IsCompound && octets.Tag == asn1.TagOctetString {
 		rest := octets.Bytes
+		var value []byte
 		for len(rest) > 0 {
 			var err error
 			if rest, err = asn1.Unmarshal(rest, &octets); err != nil {
@@ -172,16 +172,17 @@ func (eci EncapsulatedContentInfo) EContentValue() ([]byte, error) {
 
 			// Don't allow further constructed types.
 			if octets.Class != asn1.ClassUniversal || octets.Tag != asn1.TagOctetString || octets.IsCompound {
-				return nil, ASN1Error{"bad class or tag"}
+				return nil, ASN1Error{"bad class or tag in compound string"}
 			}
 
 			value = append(value, octets.Bytes...)
 		}
-	} else {
-		value = octets.Bytes
+		return value, nil
 	}
 
-	return value, nil
+	// Return the underlying DER-encoded data. By not checking octets.Tag, we
+	// preserve PCKCS #7 compatiblity (which uses [0] EXPLICIT ANY for content).
+	return octets.Bytes, nil
 }
 
 // IsTypeData checks if the EContentType is id-data.
