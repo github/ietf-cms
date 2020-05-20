@@ -3,6 +3,7 @@ package cms
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,7 +100,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sd.Verify(intermediateOpts); err == nil || err.Error() != "x509: certificate has expired or is not yet valid" {
+	if _, err := sd.Verify(intermediateOpts); err == nil || !strings.HasPrefix(err.Error(), "x509: certificate has expired") {
 		t.Fatalf("expected expired error, got %v", err)
 	}
 
@@ -137,7 +138,7 @@ func TestTimestampsVerifications(t *testing.T) {
 	if _, err := getTimestamp(sd.psd.SignerInfos[0], intermediateOpts); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sd.Verify(intermediateOpts); err == nil || err.Error() != "x509: certificate has expired or is not yet valid" {
+	if _, err := sd.Verify(intermediateOpts); err == nil || !strings.HasPrefix(err.Error(), "x509: certificate has expired") {
 		t.Fatalf("expected expired error, got %v", err)
 	}
 
