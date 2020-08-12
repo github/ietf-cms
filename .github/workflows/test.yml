@@ -14,4 +14,5 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Test
-        run: go test -v ./...
+        # -d prevents installation, which would fail for Go 1.10
+        run: go get -d -t -v ./... && go test -v ./...
