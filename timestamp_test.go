@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mastahyeti/cms/oid"
-	"github.com/mastahyeti/cms/protocol"
-	"github.com/mastahyeti/cms/timestamp"
-	"github.com/mastahyeti/fakeca"
+	"github.com/github/fakeca"
+	"github.com/github/ietf-cms/oid"
+	"github.com/github/ietf-cms/protocol"
+	"github.com/github/ietf-cms/timestamp"
 )
 
 func TestAddTimestamps(t *testing.T) {

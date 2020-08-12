@@ -5,7 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 
-	"github.com/mastahyeti/cms/protocol"
+	"github.com/github/ietf-cms/protocol"
 )
 
 // Verify verifies the SingerInfos' signatures. Each signature's associated

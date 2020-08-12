@@ -1,4 +1,4 @@
-# CMS [![GoDoc](https://godoc.org/github.com/mastahyeti/cms?status.svg)](http://godoc.org/github.com/mastahyeti/cms) [![Report card](https://goreportcard.com/badge/github.com/mastahyeti/cms)](https://goreportcard.com/report/github.com/mastahyeti/cms) [![Build Status](https://travis-ci.org/mastahyeti/cms.svg?branch=master)](https://travis-ci.org/mastahyeti/cms)
+# CMS [![PkgGoDev](https://pkg.go.dev/badge/github.com/github/ietf-cms?tab=doc)](https://pkg.go.dev/github.com/github/ietf-cms?tab=doc) [![Report card](https://goreportcard.com/badge/github.com/github/ietf-cms)](https://goreportcard.com/report/github.com/github/ietf-cms) ![Actions CI](https://github.com/github/certstore/workflows/Test/badge.svg)
 
 [CMS (Cryptographic Message Syntax)](https://tools.ietf.org/html/rfc5652) is a syntax for signing, digesting, and encrypting arbitrary messages. It evolved from PKCS#7 and is the basis for higher level protocols such as S/MIME. This package implements the SignedData CMS content-type, allowing users to digitally sign data as well as verify data signed by others.
 
