@@ -256,7 +256,6 @@ func (attrs Attributes) MarshaledForSigning() ([]byte, error) {
 	seq, err := asn1.Marshal(struct {
 		Attributes `asn1:"set"`
 	}{attrs})
-
 	if err != nil {
 		return nil, err
 	}
@@ -266,6 +265,37 @@ func (attrs Attributes) MarshaledForSigning() ([]byte, error) {
 	if _, err = asn1.Unmarshal(seq, &raw); err != nil {
 		return nil, err
 	}
+
+	return raw.Bytes, nil
+}
+
+// MarshaledOrderedSetForSigning DER encodes the Attributes as needed for signing
+// SignedAttributes. Encodes as an sequence with a SET tag to comply with previous
+// golang asn1 behavior.
+// RFC5652 explains this encoding:
+//   A separate encoding of the signedAttrs field is performed for message
+//   digest calculation. The IMPLICIT [0] tag in the signedAttrs is not used for
+//   the DER encoding, rather an EXPLICIT SET OF tag is used.  That is, the DER
+//   encoding of the EXPLICIT SET OF tag, rather than of the IMPLICIT [0] tag,
+//   MUST be included in the message digest calculation along with the length
+//   and content octets of the SignedAttributes value.
+func (attrs Attributes) MarshaledOrderedSetForSigning() ([]byte, error) {
+	seq, err := asn1.Marshal(struct {
+		Attributes `asn1:"seq"`
+	}{attrs})
+	if err != nil {
+		return nil, err
+	}
+
+	// unwrap the outer SEQUENCE
+	var raw asn1.RawValue
+	if _, err = asn1.Unmarshal(seq, &raw); err != nil {
+		return nil, err
+	}
+
+	// replace sequence tag with set tag
+	TagMask := uint8(31)
+	raw.Bytes[0] = (raw.Bytes[0] & ^TagMask) | asn1.TagSet
 
 	return raw.Bytes, nil
 }
@@ -801,7 +831,6 @@ func (sd *SignedData) ContentInfo() (ContentInfo, error) {
 			IsCompound: true,
 		},
 	}, nil
-
 }
 
 // ContentInfoDER returns the SignedData wrapped in a ContentInfo packet and DER

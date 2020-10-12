@@ -67,7 +67,7 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 	chains := make([][][]*x509.Certificate, 0, len(sd.psd.SignerInfos))
 
 	for _, si := range sd.psd.SignerInfos {
-		var signedMessage []byte
+		var signedMessage, signedMessageOrdered []byte
 
 		// SignedAttrs is optional if EncapContentInfo eContentType isn't id-data.
 		if si.SignedAttrs == nil {
@@ -118,6 +118,15 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 			if signedMessage, err = si.SignedAttrs.MarshaledForSigning(); err != nil {
 				return nil, err
 			}
+
+			// The signature is over the DER encoded signed attributes as a sequence
+			// instead of a set, but with a set tag, minus the leading class/tag/length
+			// bytes. This matches the incorrect behavior of golang asn1 prior to 1.15.
+			// This includes the digest of the original message, so it is implicitly
+			// signed too.
+			if signedMessageOrdered, err = si.SignedAttrs.MarshaledOrderedSetForSigning(); err != nil {
+				return nil, err
+			}
 		}
 
 		cert, err := si.FindCertificate(certs)
@@ -131,7 +140,9 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 		}
 
 		if err := cert.CheckSignature(algo, signedMessage, si.Signature); err != nil {
-			return nil, err
+			if err2 := cert.CheckSignature(algo, signedMessageOrdered, si.Signature); err2 != nil {
+				return nil, err
+			}
 		}
 
 		// If the caller didn't specify the signature time, we'll use the verified
