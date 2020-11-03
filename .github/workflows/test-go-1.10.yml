@@ -21,3 +21,4 @@ jobs:
       - name: Test
         # -d prevents installation, which would fail for Go 1.10
         run: go get -d -t -v ./... && go test -v ./...
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
