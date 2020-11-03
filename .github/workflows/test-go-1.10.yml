@@ -2,6 +2,9 @@ on: [push, pull_request]
 name: Test (Go 1.10)
 jobs:
   test:
+    env:
+      GO111MODULE: off
+      GOPATH: ${{ github.workspace }}/go
     strategy:
       matrix:
         go-version: ["1.10"]
@@ -13,6 +16,8 @@ jobs:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
       - name: Test
         # -d prevents installation, which would fail for Go 1.10
         run: go get -d -t -v ./... && go test -v ./...
