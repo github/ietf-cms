@@ -281,7 +281,7 @@ func (attrs Attributes) MarshaledForSigning() ([]byte, error) {
 //   and content octets of the SignedAttributes value.
 func (attrs Attributes) MarshaledOrderedSetForSigning() ([]byte, error) {
 	seq, err := asn1.Marshal(struct {
-		Attributes `asn1:"seq"`
+		Attributes `asn1:"sequence"`
 	}{attrs})
 	if err != nil {
 		return nil, err
