@@ -4,7 +4,6 @@ package oid
 import (
 	"crypto"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/asn1"
 )
 
@@ -124,9 +123,20 @@ var SignatureAlgorithmToX509SignatureAlgorithm = map[string]x509.SignatureAlgori
 	SignatureAlgorithmDSAWithSHA1.String():     x509.DSAWithSHA1,
 }
 
-// X509PublicKeyAlgorithmToPKIXAlgorithmIdentifier maps certificate public key
-// algorithms to CMS signature algorithms.
-var X509PublicKeyAlgorithmToPKIXAlgorithmIdentifier = map[x509.PublicKeyAlgorithm]pkix.AlgorithmIdentifier{
-	x509.RSA:   pkix.AlgorithmIdentifier{Algorithm: PublicKeyAlgorithmRSA},
-	x509.ECDSA: pkix.AlgorithmIdentifier{Algorithm: PublicKeyAlgorithmECDSA},
+// X509PublicKeyAndDigestAlgorithmToSignatureAlgorithm maps X509 public key and
+// digest algorithms to to SignatureAlgorithm OIDs.
+var X509PublicKeyAndDigestAlgorithmToSignatureAlgorithm = map[x509.PublicKeyAlgorithm]map[string]asn1.ObjectIdentifier{
+	x509.RSA: map[string]asn1.ObjectIdentifier{
+		DigestAlgorithmSHA1.String():   SignatureAlgorithmSHA1WithRSA,
+		DigestAlgorithmMD5.String():    SignatureAlgorithmMD5WithRSA,
+		DigestAlgorithmSHA256.String(): SignatureAlgorithmSHA256WithRSA,
+		DigestAlgorithmSHA384.String(): SignatureAlgorithmSHA384WithRSA,
+		DigestAlgorithmSHA512.String(): SignatureAlgorithmSHA512WithRSA,
+	},
+	x509.ECDSA: map[string]asn1.ObjectIdentifier{
+		DigestAlgorithmSHA1.String():   SignatureAlgorithmECDSAWithSHA1,
+		DigestAlgorithmSHA256.String(): SignatureAlgorithmECDSAWithSHA256,
+		DigestAlgorithmSHA384.String(): SignatureAlgorithmECDSAWithSHA384,
+		DigestAlgorithmSHA512.String(): SignatureAlgorithmECDSAWithSHA512,
+	},
 }
