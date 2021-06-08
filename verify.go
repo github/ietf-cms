@@ -140,6 +140,9 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 		}
 
 		if err := cert.CheckSignature(algo, signedMessage, si.Signature); err != nil {
+			if signedMessageOrdered == nil {
+				return nil, err
+			}
 			if err2 := cert.CheckSignature(algo, signedMessageOrdered, si.Signature); err2 != nil {
 				return nil, err
 			}
