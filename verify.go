@@ -115,7 +115,7 @@ func (sd *SignedData) verify(econtent []byte, opts x509.VerifyOptions) ([][][]*x
 			// The signature is over the DER encoded signed attributes, minus the
 			// leading class/tag/length bytes. This includes the digest of the
 			// original message, so it is implicitly signed too.
-			if signedMessage, err = si.SignedAttrs.MarshaledForSigning(); err != nil {
+			if signedMessage, err = si.SignedAttrs.MarshaledForVerification(); err != nil {
 				return nil, err
 			}
 		}

@@ -2,6 +2,10 @@ package cms
 
 import (
 	"crypto/x509"
+	"encoding/pem"
+	"io/ioutil"
+	"os"
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -97,6 +101,87 @@ func TestSignDetached(t *testing.T) {
 	if st.After(time.Now().Add(time.Second)) || st.Before(time.Now().Add(-time.Second)) {
 		t.Fatal("expected SigningTime to be now. Difference was", st.Sub(time.Now()))
 	}
+}
+
+func TestSignDetachedWithOpenSSL(t *testing.T) {
+	// Do not require this test to pass if openssl is not in the path
+	opensslPath, err := exec.LookPath("openssl")
+	if err != nil {
+		t.Skip("could not find openssl in path")
+	}
+
+	content := []byte("hello, world!")
+
+	signatureDER, err := SignDetached(content, leaf.Chain(), leaf.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signatureFile, err := ioutil.TempFile("", "TestSignatureOpenSSL_signatureFile_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = signatureFile.Write(signatureDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signatureFile.Close()
+
+	// write content to a temp file
+	contentFile, err := ioutil.TempFile("", "TestSignatureOpenSSL_contentFile_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = contentFile.Write(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contentFile.Close()
+
+	// write CA cert to a temp file
+	certsFile, err := ioutil.TempFile("", "TestSignatureOpenSSL_certsFile_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, cert := range leaf.Chain() {
+		// write leaf as PEM
+		certBlock := &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert.Raw,
+		}
+
+		certPEM := pem.EncodeToMemory(certBlock)
+
+		_, err = certsFile.Write(certPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	certsFile.Close()
+
+	cmd := exec.Command(opensslPath, "cms", "-verify",
+		"-content", contentFile.Name(), "-binary",
+		"-in", signatureFile.Name(), "-inform", "DER",
+		"-CAfile", certsFile.Name())
+
+	_, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	//
+	// Remove temporary files if test was successful.
+	// Intentionally leave the temp files if test fails.
+	//
+	os.Remove(contentFile.Name())
+	os.Remove(signatureFile.Name())
+	os.Remove(certsFile.Name())
 }
 
 func TestSignRemoveHeaders(t *testing.T) {
