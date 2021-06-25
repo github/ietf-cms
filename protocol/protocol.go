@@ -659,18 +659,21 @@ func (sd *SignedData) AddSignerInfo(chain []*x509.Certificate, signer crypto.Sig
 		return err
 	}
 
-	digestAlgorithm := digestAlgorithmForPublicKey(pub)
-	signatureAlgorithm, ok := oid.X509PublicKeyAlgorithmToPKIXAlgorithmIdentifier[cert.PublicKeyAlgorithm]
+	digestAlgorithmID := digestAlgorithmForPublicKey(pub)
+
+	signatureAlgorithmOID, ok := oid.X509PublicKeyAndDigestAlgorithmToSignatureAlgorithm[cert.PublicKeyAlgorithm][digestAlgorithmID.Algorithm.String()]
 	if !ok {
 		return errors.New("unsupported certificate public key algorithm")
 	}
 
+	signatureAlgorithmID := pkix.AlgorithmIdentifier{Algorithm: signatureAlgorithmOID}
+
 	si := SignerInfo{
 		Version:            1,
 		SID:                sid,
-		DigestAlgorithm:    digestAlgorithm,
+		DigestAlgorithm:    digestAlgorithmID,
 		SignedAttrs:        nil,
-		SignatureAlgorithm: signatureAlgorithm,
+		SignatureAlgorithm: signatureAlgorithmID,
 		Signature:          nil,
 		UnsignedAttrs:      nil,
 	}
