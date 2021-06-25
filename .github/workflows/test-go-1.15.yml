@@ -1,10 +1,10 @@
 on: [push, pull_request]
-name: Test (Go 1.10)
+name: Test (Go 1.15)
 jobs:
   test:
     strategy:
       matrix:
-        go-version: ["1.10"]
+        go-version: ["1.15"]
     runs-on: ubuntu-latest
     steps:
       - name: Install Go
