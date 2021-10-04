@@ -1,3 +1,4 @@
+// Deprecated: Use the "github.com/github/smimesign/ietf-cms" module instead.
 module github.com/github/ietf-cms
 
 go 1.12
